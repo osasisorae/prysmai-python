@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "prysmai"
-version = "0.1.1"
+version = "0.1.2"
 description = "Prysm AI — Observability SDK for LLM applications. One-line integration for OpenAI, Anthropic, and any OpenAI-compatible provider."
 readme = "README.md"
 license = { text = "MIT" }
@@ -40,9 +40,9 @@ dev = [
 
 [project.urls]
 Homepage = "https://prysmai.io"
-Documentation = "https://github.com/osasisorae/prysmai/tree/main/sdk"
-Repository = "https://github.com/osasisorae/prysmai"
-Issues = "https://github.com/osasisorae/prysmai/issues"
+Documentation = "https://github.com/osasisorae/prysmai-python#readme"
+Repository = "https://github.com/osasisorae/prysmai-python"
+Issues = "https://github.com/osasisorae/prysmai-python/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["prysmai"]
