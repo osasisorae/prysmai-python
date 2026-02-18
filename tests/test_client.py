@@ -25,7 +25,7 @@ def clean_env(monkeypatch):
 
 
 VALID_KEY = "sk-prysm-test1234567890abcdef"
-VALID_URL = "https://proxy.prysmai.io/v1"
+VALID_URL = "https://prysmai.io/api/v1"
 
 
 # ─── PrysmClient init ───
@@ -262,7 +262,7 @@ class TestTransport:
 
 class TestVersion:
     def test_version_string(self):
-        assert __version__ == "0.1.1"
+        assert __version__ == "0.1.3"
 
     def test_version_semver_format(self):
         parts = __version__.split(".")

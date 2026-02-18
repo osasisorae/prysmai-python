@@ -66,7 +66,7 @@ class PrysmClient:
     A thin configuration object that produces monitored OpenAI clients.
 
     Usage:
-        prysm = PrysmClient(prysm_key="sk-prysm-...", base_url="https://proxy.prysmai.io")
+        prysm = PrysmClient(prysm_key="sk-prysm-...", base_url="https://prysmai.io/api/v1")
         client = prysm.openai()
         response = client.chat.completions.create(...)
     """
@@ -79,7 +79,7 @@ class PrysmClient:
     ):
         self.prysm_key = prysm_key or os.environ.get("PRYSM_API_KEY", "")
         self.base_url = base_url or os.environ.get(
-            "PRYSM_BASE_URL", "https://proxy.prysmai.io/v1"
+            "PRYSM_BASE_URL", "https://prysmai.io/api/v1"
         )
         self.timeout = timeout
 
@@ -157,7 +157,7 @@ def monitor(
     Args:
         client: An existing openai.OpenAI or openai.AsyncOpenAI instance.
         prysm_key: Your Prysm API key (sk-prysm-...). Falls back to PRYSM_API_KEY env var.
-        base_url: Prysm proxy URL. Falls back to PRYSM_BASE_URL env var or https://proxy.prysmai.io/v1.
+        base_url: Prysm proxy URL. Falls back to PRYSM_BASE_URL env var or https://prysmai.io/api/v1.
         timeout: Request timeout in seconds (default 120).
 
     Returns:

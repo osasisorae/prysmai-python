@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "prysmai"
-version = "0.1.2"
+version = "0.1.3"
 description = "Prysm AI — Observability SDK for LLM applications. One-line integration for OpenAI, Anthropic, and any OpenAI-compatible provider."
 readme = "README.md"
 license = { text = "MIT" }

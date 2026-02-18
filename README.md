@@ -72,7 +72,7 @@ The primary entry point. Wraps an existing OpenAI client.
 |-----------|------|---------|-------------|
 | `client` | `openai.OpenAI` or `openai.AsyncOpenAI` | *required* | Your existing OpenAI client |
 | `prysm_key` | `str` | `PRYSM_API_KEY` env var | Your Prysm API key (`sk-prysm-...`) |
-| `base_url` | `str` | `https://proxy.prysmai.io/v1` | Prysm proxy URL |
+| `base_url` | `str` | `https://prysmai.io/api/v1` | Prysm proxy URL |
 | `timeout` | `float` | `120.0` | Request timeout in seconds |
 
 **Returns:** A new OpenAI client of the same type (sync or async) routed through Prysm.
@@ -203,7 +203,7 @@ If you're running the Prysm proxy on your own infrastructure:
 monitored = monitor(
     client,
     prysm_key="sk-prysm-...",
-    base_url="http://localhost:3000/v1",  # Your self-hosted proxy
+    base_url="http://localhost:3000/api/v1",  # Your self-hosted proxy
 )
 ```
 
@@ -263,8 +263,8 @@ Prysm-specific errors (invalid Prysm key, proxy unreachable) also surface as sta
 ## Development
 
 ```bash
-git clone https://github.com/osasisorae/prysmai.git
-cd prysmai/sdk
+git clone https://github.com/osasisorae/prysmai-python.git
+cd prysmai-python
 
 # Install with dev dependencies
 pip install -e ".[dev]"
