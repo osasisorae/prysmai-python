@@ -10,7 +10,7 @@ Prysm AI sits between your application and your LLM provider, capturing every re
 
 ```
 Your App  →  Prysm Proxy  →  LLM Provider
-              ↓               (OpenAI, Anthropic, vLLM, Ollama, or any OpenAI-compatible endpoint)
+              ↓               (OpenAI, Anthropic, Google Gemini, vLLM, Ollama, or any OpenAI-compatible endpoint)
          Full observability
          (latency, tokens, cost,
           errors, alerts, traces)
@@ -22,7 +22,7 @@ Your App  →  Prysm Proxy  →  LLM Provider
 
 | Feature | Description |
 |---------|-------------|
-| **Multi-provider proxy** | OpenAI, Anthropic (auto-translated), vLLM, Ollama, any OpenAI-compatible endpoint |
+| **Multi-provider proxy** | OpenAI, Anthropic (auto-translated), Google Gemini (native OpenAI-compat), vLLM, Ollama, any OpenAI-compatible endpoint |
 | **Full trace capture** | Every request/response logged with tokens, latency, cost, model, and custom metadata |
 | **Real-time dashboard** | Live metrics charts, request explorer, model usage breakdown, WebSocket live feed |
 | **3 proxy endpoints** | Chat completions, text completions, and embeddings |
@@ -30,7 +30,7 @@ Your App  →  Prysm Proxy  →  LLM Provider
 | **Alerting engine** | Email, Slack, Discord, and custom webhook alerts on metric thresholds |
 | **Team management** | Invite members via email, assign roles, manage access per organization |
 | **API key auth** | `sk-prysm-*` keys with SHA-256 hashing, create/revoke from dashboard |
-| **Cost tracking** | Automatic cost calculation for 30+ models, custom pricing for any model |
+| **Cost tracking** | Automatic cost calculation for 40+ models (OpenAI, Anthropic, Gemini), custom pricing for any model |
 | **Tool calling & logprobs** | Captured and displayed in the trace detail panel |
 | **Latency percentiles** | Pre-aggregated p50, p95, p99 latency and TTFT metrics |
 | **Usage enforcement** | Free tier limit (10K requests/month) with configurable plan limits |
@@ -110,6 +110,7 @@ The Prysm proxy supports any LLM provider. Configure your provider in the projec
 |----------|----------|-------|
 | **OpenAI** | `https://api.openai.com/v1` | Default. All models supported (GPT-4o, GPT-4o-mini, o1, o3-mini, etc.) |
 | **Anthropic** | `https://api.anthropic.com` | Auto-translated to/from OpenAI format. Use OpenAI SDK syntax — Prysm handles the conversion. |
+| **Google Gemini** | `https://generativelanguage.googleapis.com/v1beta/openai` | Native OpenAI-compatible endpoint. All Gemini models (2.5 Pro, 2.5 Flash, 2.0 Flash, 1.5 Pro, etc.) |
 | **vLLM** | `http://your-server:8000/v1` | Any vLLM-served model (Llama, Mistral, Qwen, etc.) |
 | **Ollama** | `http://localhost:11434/v1` | Local models via Ollama |
 | **Custom** | Any URL | Any OpenAI-compatible endpoint (Together AI, Groq, Fireworks, etc.) |
@@ -127,6 +128,22 @@ client = PrysmClient(prysm_key="sk-prysm-...").openai()
 # Use OpenAI format — Prysm translates to Anthropic's API and back
 response = client.chat.completions.create(
     model="claude-sonnet-4-20250514",
+    messages=[{"role": "user", "content": "Explain quantum computing"}],
+)
+```
+
+### Google Gemini Example
+
+Google Gemini works through its native OpenAI-compatible endpoint — no translation needed:
+
+```python
+from prysmai import PrysmClient
+
+# Your project is configured with Google Gemini as the provider
+client = PrysmClient(prysm_key="sk-prysm-...").openai()
+
+response = client.chat.completions.create(
+    model="gemini-2.5-flash",
     messages=[{"role": "user", "content": "Explain quantum computing"}],
 )
 ```
@@ -290,7 +307,7 @@ Every request through the SDK is logged with:
 | Field | Description |
 |-------|-------------|
 | **Model** | Which model was called (gpt-4o, claude-sonnet-4-20250514, llama-3, etc.) |
-| **Provider** | Which provider handled the request (openai, anthropic, vllm, ollama, custom) |
+| **Provider** | Which provider handled the request (openai, anthropic, google, vllm, ollama, custom) |
 | **Latency** | Total request duration in milliseconds |
 | **TTFT** | Time to first token for streaming requests |
 | **Prompt tokens** | Input token count |
@@ -340,7 +357,9 @@ Supported conditions: `>`, `>=`, `<`, `<=`, `=`.
 
 ## Cost Tracking
 
-Prysm automatically calculates cost for 30+ models with built-in pricing:
+Prysm automatically calculates cost for 40+ models with built-in pricing:
+
+**OpenAI Models**
 
 | Model | Input (per 1M tokens) | Output (per 1M tokens) |
 |-------|----------------------|------------------------|
@@ -349,11 +368,28 @@ Prysm automatically calculates cost for 30+ models with built-in pricing:
 | gpt-4-turbo | $10.00 | $30.00 |
 | o1 | $15.00 | $60.00 |
 | o3-mini | $1.10 | $4.40 |
+| text-embedding-3-small | $0.02 | $0.00 |
+| text-embedding-3-large | $0.13 | $0.00 |
+
+**Anthropic Models**
+
+| Model | Input (per 1M tokens) | Output (per 1M tokens) |
+|-------|----------------------|------------------------|
 | claude-3-5-sonnet | $3.00 | $15.00 |
 | claude-3-5-haiku | $0.80 | $4.00 |
 | claude-3-opus | $15.00 | $75.00 |
-| text-embedding-3-small | $0.02 | $0.00 |
-| text-embedding-3-large | $0.13 | $0.00 |
+
+**Google Gemini Models**
+
+| Model | Input (per 1M tokens) | Output (per 1M tokens) |
+|-------|----------------------|------------------------|
+| gemini-2.5-pro | $1.25 | $10.00 |
+| gemini-2.5-flash | $0.30 | $2.50 |
+| gemini-2.5-flash-lite | $0.10 | $0.40 |
+| gemini-2.0-flash | $0.10 | $0.40 |
+| gemini-2.0-flash-lite | $0.075 | $0.30 |
+| gemini-1.5-pro | $1.25 | $5.00 |
+| gemini-1.5-flash | $0.075 | $0.30 |
 
 For models not in the built-in list (open-source, self-hosted, etc.), add custom pricing in **Settings > Pricing** with your own cost-per-token rates.
 
