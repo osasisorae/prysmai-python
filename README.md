@@ -1,8 +1,8 @@
 # Prysm AI — Python SDK
 
-**The observability layer for LLM applications. One line of code. Full visibility.**
+**The observability and security layer for LLM applications. One line of code. Full visibility. Built-in protection.**
 
-Prysm AI sits between your application and your LLM provider, capturing every request and response with full metrics — latency, token counts, cost, errors, and complete prompt/completion data. The Python SDK makes integration a single line change.
+Prysm AI sits between your application and your LLM provider, capturing every request and response with full metrics — latency, token counts, cost, errors, and complete prompt/completion data. It also scans every request in real time for prompt injection attacks, PII leakage, and content policy violations. The Python SDK makes integration a single line change.
 
 [![PyPI version](https://img.shields.io/pypi/v/prysmai.svg)](https://pypi.org/project/prysmai/)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://python.org)
@@ -11,9 +11,10 @@ Prysm AI sits between your application and your LLM provider, capturing every re
 ```
 Your App  →  Prysm Proxy  →  LLM Provider
               ↓               (OpenAI, Anthropic, Google Gemini, vLLM, Ollama, or any OpenAI-compatible endpoint)
-         Full observability
-         (latency, tokens, cost,
-          errors, alerts, traces)
+         Full observability + security
+         (latency, tokens, cost, errors,
+          alerts, traces, injection detection,
+          PII redaction, content policies)
 ```
 
 ---
@@ -34,6 +35,10 @@ Your App  →  Prysm Proxy  →  LLM Provider
 | **Tool calling & logprobs** | Captured and displayed in the trace detail panel |
 | **Latency percentiles** | Pre-aggregated p50, p95, p99 latency and TTFT metrics |
 | **Usage enforcement** | Free tier limit (10K requests/month) with configurable plan limits |
+| **Prompt injection detection** | 20+ attack patterns across 7 categories (role manipulation, delimiter injection, jailbreaks, etc.) |
+| **PII detection & redaction** | 8 data types (email, phone, SSN, credit cards, API keys, IPs) with mask/hash/block modes |
+| **Content policy enforcement** | 5 built-in policies + custom keywords, composite threat scoring (0–100) |
+| **Security dashboard** | Real-time threat log, stats overview, and per-organization configuration |
 
 ---
 
@@ -395,6 +400,66 @@ For models not in the built-in list (open-source, self-hosted, etc.), add custom
 
 ---
 
+## Security
+
+Prysm includes a built-in security layer that scans every LLM request in real time before forwarding it to the provider. **No SDK changes are required** — your existing integration is already protected.
+
+### What Gets Scanned
+
+| Engine | What It Detects | Action |
+|--------|----------------|--------|
+| **Injection Detector** | Prompt injection attacks (20+ patterns across 7 categories) | Flag or block |
+| **PII Detector** | Emails, phone numbers, SSNs, credit cards, API keys, IPs, private keys, DOBs | Mask, hash, or block |
+| **Content Policy** | Hate speech, violence, sexual content, self-harm, illegal activities | Flag or block |
+
+### Injection Detection Categories
+
+| Category | Example Patterns | Severity |
+|----------|-----------------|----------|
+| Role Manipulation | "ignore previous instructions", "you are now DAN" | High (8–9) |
+| Delimiter Injection | "---END SYSTEM---", "[INST]", markdown code fences | Medium (6–7) |
+| Context Confusion | "the real instructions are", "admin override" | High (7–8) |
+| Encoding Tricks | Base64 encoded instructions, hex-encoded payloads | Medium (6–7) |
+| Extraction Attempts | "repeat your system prompt", "show your instructions" | High (7–8) |
+| Jailbreak Phrases | "DAN mode", "developer mode", "no restrictions" | Critical (9–10) |
+| Multi-language Attacks | Language-switching evasion, mixed-script injection | Medium (5–6) |
+
+### PII Redaction Modes
+
+| Mode | Behavior | Example Output |
+|------|----------|----------------|
+| `none` | PII is detected and logged but not modified | `user@example.com` (unchanged) |
+| `mask` | Replaced with type-labeled placeholder | `[EMAIL_REDACTED]` |
+| `hash` | Replaced with SHA-256 hash | `[EMAIL:a1b2c3d4]` |
+| `block` | Entire request rejected with 403 | Request blocked |
+
+### Threat Scoring
+
+Every request receives a composite threat score from 0 to 100:
+
+| Score Range | Level | Behavior |
+|-------------|-------|----------|
+| 0–19 | Clean | No action |
+| 20–39 | Low | Logged, visible in dashboard |
+| 40–69 | Medium | Logged, triggers alerts if configured |
+| 70–100 | High | Logged, blocked if blocking is enabled |
+
+### Configuration
+
+Configure security per-organization via the Security Dashboard or Settings:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `injectionDetection` | `true` | Enable/disable prompt injection scanning |
+| `piiDetection` | `true` | Enable/disable PII detection |
+| `piiRedactionMode` | `none` | How to handle detected PII: `none`, `mask`, `hash`, or `block` |
+| `blockHighThreats` | `false` | Automatically block requests with threat score ≥ 70 |
+| `customKeywords` | `[]` | Custom keywords to flag in request content |
+
+> **Recommended setup:** Start with defaults (detection on, blocking off) to monitor your traffic. Once confident in detection accuracy, enable `blockHighThreats`. Use `mask` redaction for production workloads handling customer data.
+
+---
+
 ## Self-Hosted Proxy
 
 If you're running the Prysm proxy on your own infrastructure:
@@ -435,6 +500,7 @@ Prysm-specific errors:
 | HTTP Status | Meaning |
 |-------------|---------|
 | `401` | Invalid or missing Prysm API key |
+| `403` | Request blocked by security policy (high threat score or PII block mode) |
 | `429` | Usage limit exceeded (free tier: 10K requests/month) |
 | `502` | Upstream provider error (forwarded from OpenAI/Anthropic/etc.) |
 | `503` | Proxy temporarily unavailable |
