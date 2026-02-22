@@ -262,7 +262,7 @@ class TestTransport:
 
 class TestVersion:
     def test_version_string(self):
-        assert __version__ == "0.1.3"
+        assert __version__ == "0.3.1"
 
     def test_version_semver_format(self):
         parts = __version__.split(".")

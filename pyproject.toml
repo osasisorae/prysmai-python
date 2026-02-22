@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "prysmai"
-version = "0.3.0"
+version = "0.3.1"
 description = "Prysm AI — The observability and security layer for LLM applications. Full trace capture, real-time dashboard, alerting, cost tracking, multi-provider support (OpenAI, Anthropic, Google Gemini, vLLM, Ollama), prompt injection detection, PII redaction, and content policy enforcement. One line of code."
 readme = "README.md"
 license = { text = "MIT" }

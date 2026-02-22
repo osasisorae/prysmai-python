@@ -18,5 +18,5 @@ Usage:
 from prysmai.client import monitor, PrysmClient
 from prysmai.context import prysm_context, PrysmContext
 
-__version__ = "0.2.1"
+__version__ = "0.3.1"
 __all__ = ["monitor", "PrysmClient", "prysm_context", "PrysmContext", "__version__"]
