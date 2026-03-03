@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "prysmai"
-version = "0.3.1"
+version = "0.4.0"
 description = "Prysm AI — The observability and security layer for LLM applications. Full trace capture, real-time dashboard, alerting, cost tracking, multi-provider support (OpenAI, Anthropic, Google Gemini, vLLM, Ollama), prompt injection detection, PII redaction, and content policy enforcement. One line of code."
 readme = "README.md"
 license = { text = "MIT" }
@@ -32,6 +32,20 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+langchain = [
+    "langchain-core>=0.1.0",
+]
+crewai = [
+    "crewai>=0.1.0",
+]
+llamaindex = [
+    "llama-index-core>=0.10.0",
+]
+all = [
+    "langchain-core>=0.1.0",
+    "crewai>=0.1.0",
+    "llama-index-core>=0.10.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
