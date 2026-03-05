@@ -242,17 +242,30 @@ class PrysmCrewMonitor:
 
     def _on_tool_start(self, event: Any) -> None:
         """Called when a tool usage begins."""
-        tool_name = getattr(event, "tool_name", "unknown")
-        tool_id = f"{tool_name}_{time.time()}"
-        self._tool_timers[tool_id] = time.time()
+        try:
+            tool_name = getattr(event, "tool_name", "unknown")
+            tool_id = f"{tool_name}_{time.time()}"
+            self._tool_timers[tool_id] = time.time()
 
-        ev = {
-            "event_type": "tool_usage_started",
-            "tool_name": tool_name,
-            "tool_input": _safe_serialize(getattr(event, "tool_input", None)),
-            "_tool_id": tool_id,
-        }
-        self._buffer_event(ev)
+            # BUG-003 fix: Safely serialize tool_input — delegation tools
+            # (DelegateWorkToolSchema) can have malformed data from gpt-4o-mini
+            tool_input = None
+            try:
+                raw_input = getattr(event, "tool_input", None)
+                if raw_input is not None:
+                    tool_input = _safe_serialize(raw_input)
+            except Exception:
+                tool_input = "<input serialization failed>"
+
+            ev = {
+                "event_type": "tool_usage_started",
+                "tool_name": tool_name,
+                "tool_input": tool_input,
+                "_tool_id": tool_id,
+            }
+            self._buffer_event(ev)
+        except Exception as e:
+            logger.warning(f"Failed to capture tool_start event: {e}")
 
     def _on_tool_end(self, event: Any) -> None:
         """Called when a tool usage completes."""
@@ -276,15 +289,19 @@ class PrysmCrewMonitor:
 
     def _on_tool_error(self, event: Any) -> None:
         """Called when a tool usage fails."""
-        tool_name = getattr(event, "tool_name", "unknown")
-        error = getattr(event, "error", "Unknown error")
+        try:
+            tool_name = getattr(event, "tool_name", "unknown")
+            error = getattr(event, "error", "Unknown error")
 
-        ev = {
-            "event_type": "tool_usage_error",
-            "tool_name": tool_name,
-            "error": str(error),
-        }
-        self._buffer_event(ev)
+            # BUG-003 fix: Safely handle delegation tool errors
+            ev = {
+                "event_type": "tool_usage_error",
+                "tool_name": tool_name,
+                "error": str(error),
+            }
+            self._buffer_event(ev)
+        except Exception as e:
+            logger.warning(f"Failed to capture tool_error event: {e}")
 
     # ─── Event Buffering & Flushing ──────────────────────────────
 

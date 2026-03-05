@@ -113,6 +113,9 @@ class PrysmCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Called when an LLM call begins."""
+        # BUG-001 fix: LangChain may pass None for serialized
+        if serialized is None:
+            serialized = {}
         model_name = serialized.get("kwargs", {}).get("model_name", "")
         if not model_name:
             model_name = serialized.get("id", ["", ""])[-1] if serialized.get("id") else "unknown"
@@ -211,6 +214,9 @@ class PrysmCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Called when a chat model call begins."""
+        # BUG-001 fix: LangChain may pass None for serialized
+        if serialized is None:
+            serialized = {}
         model_name = serialized.get("kwargs", {}).get("model_name", "")
         if not model_name:
             model_name = serialized.get("id", ["", ""])[-1] if serialized.get("id") else "unknown"
@@ -250,6 +256,9 @@ class PrysmCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Called when a chain execution begins."""
+        # BUG-001 fix: LangChain may pass None for serialized
+        if serialized is None:
+            serialized = {}
         chain_type = serialized.get("id", ["", ""])[-1] if serialized.get("id") else "unknown"
 
         self._run_map[str(run_id)] = {
@@ -326,6 +335,9 @@ class PrysmCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Called when a tool invocation begins."""
+        # BUG-001 fix: LangChain may pass None for serialized
+        if serialized is None:
+            serialized = {}
         tool_name = serialized.get("name", "unknown")
 
         self._run_map[str(run_id)] = {
