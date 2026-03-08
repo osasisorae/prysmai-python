@@ -10,6 +10,10 @@ Usage:
 
     # Or set globally
     prysm_context.set(user_id="user_123")
+
+    # With governance session tracking (v0.5.0+)
+    with prysm_context(governance_session_id="gov_xyz"):
+        response = monitored.chat.completions.create(...)
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ class PrysmContext:
 
     user_id: Optional[str] = None
     session_id: Optional[str] = None
+    governance_session_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_headers(self) -> Dict[str, str]:
@@ -35,6 +40,8 @@ class PrysmContext:
             headers["X-Prysm-User-Id"] = self.user_id
         if self.session_id:
             headers["X-Prysm-Session-Id"] = self.session_id
+        if self.governance_session_id:
+            headers["X-Prysm-Governance-Session-Id"] = self.governance_session_id
         if self.metadata:
             headers["X-Prysm-Metadata"] = json.dumps(self.metadata)
         return headers
@@ -57,6 +64,7 @@ class _ContextManager:
         self,
         user_id: Optional[str] = None,
         session_id: Optional[str] = None,
+        governance_session_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Set global context metadata for all subsequent requests."""
@@ -65,6 +73,8 @@ class _ContextManager:
             ctx.user_id = user_id
         if session_id is not None:
             ctx.session_id = session_id
+        if governance_session_id is not None:
+            ctx.governance_session_id = governance_session_id
         if metadata is not None:
             ctx.metadata = metadata
 
@@ -80,10 +90,16 @@ class _ContextManager:
         self,
         user_id: Optional[str] = None,
         session_id: Optional[str] = None,
+        governance_session_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> "_ContextScope":
         """Use as a context manager for scoped metadata."""
-        return _ContextScope(user_id=user_id, session_id=session_id, metadata=metadata)
+        return _ContextScope(
+            user_id=user_id,
+            session_id=session_id,
+            governance_session_id=governance_session_id,
+            metadata=metadata,
+        )
 
 
 class _ContextScope:
@@ -93,10 +109,12 @@ class _ContextScope:
         self,
         user_id: Optional[str] = None,
         session_id: Optional[str] = None,
+        governance_session_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ):
         self._user_id = user_id
         self._session_id = session_id
+        self._governance_session_id = governance_session_id
         self._metadata = metadata
         self._token: Optional[contextvars.Token[PrysmContext]] = None
 
@@ -105,6 +123,7 @@ class _ContextScope:
         new_ctx = PrysmContext(
             user_id=self._user_id or old.user_id,
             session_id=self._session_id or old.session_id,
+            governance_session_id=self._governance_session_id or old.governance_session_id,
             metadata={**old.metadata, **(self._metadata or {})},
         )
         self._token = _prysm_ctx.set(new_ctx)

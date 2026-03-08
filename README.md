@@ -1,8 +1,8 @@
 # Prysm AI — Python SDK
 
-**The observability and security layer for LLM applications. One line of code. Full visibility. Built-in protection.**
+**The observability, governance, and security layer for LLM applications. One line of code. Full visibility. Built-in protection.**
 
-Prysm AI sits between your application and your LLM provider, capturing every request and response with full metrics — latency, token counts, cost, errors, and complete prompt/completion data. It also scans every request in real time for prompt injection attacks, PII leakage, and content policy violations. The Python SDK makes integration a single line change.
+Prysm AI sits between your application and your LLM provider, capturing every request and response with full metrics — latency, token counts, cost, errors, and complete prompt/completion data. It also scans every request in real time for prompt injection attacks, PII leakage, and content policy violations. **New in v0.5.0:** the governance layer adds behavioral detection (early stopping, tool undertriggering) and code security scanning for AI agents, with native LangGraph and CrewAI integrations.
 
 [![PyPI version](https://img.shields.io/pypi/v/prysmai.svg)](https://pypi.org/project/prysmai/)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://python.org)
@@ -39,6 +39,9 @@ Your App  →  Prysm Proxy  →  LLM Provider
 | **PII detection & redaction** | 8 data types (email, phone, SSN, credit cards, API keys, IPs) with mask/hash/block modes |
 | **Content policy enforcement** | 5 built-in policies + custom keywords, composite threat scoring (0–100) |
 | **Security dashboard** | Real-time threat log, stats overview, and per-organization configuration |
+| **Governance layer** | Behavioral detection (early stopping, tool undertriggering), code security scanning, policy enforcement for AI agents |
+| **LangGraph integration** | Graph-aware telemetry — node execution tracking, state transitions, tool-to-node mapping |
+| **CrewAI integration** | Automatic crew monitoring with governance support |
 
 ---
 
@@ -46,6 +49,15 @@ Your App  →  Prysm Proxy  →  LLM Provider
 
 ```bash
 pip install prysmai
+
+# With LangGraph support
+pip install prysmai[langgraph]
+
+# With CrewAI support
+pip install prysmai[crewai]
+
+# Everything
+pip install prysmai[all]
 ```
 
 Requires Python 3.9+ and depends on `openai` (v1.0+) and `httpx` (v0.24+), both installed automatically.
@@ -460,6 +472,114 @@ Configure security per-organization via the Security Dashboard or Settings:
 
 ---
 
+## Governance (v0.5.0)
+
+The governance layer monitors AI agent behavior in real time — detecting early stopping, tool undertriggering, and code security vulnerabilities.
+
+### Standalone Governance Session
+
+```python
+from prysmai import PrysmClient
+from prysmai.governance import GovernanceSession
+
+client = PrysmClient(prysm_key="sk-prysm-...")
+
+with GovernanceSession(client=client, task="Fix authentication bug", agent_type="claude_code") as gov:
+    # Report agent events as they happen
+    result = gov.check_behavior([
+        {"event_type": "llm_call", "data": {"model": "gpt-4o", "prompt_tokens": 500}},
+        {"event_type": "tool_call", "data": {"tool_name": "bash", "command": "grep -r 'auth'"}},
+        {"event_type": "llm_call", "data": {"model": "gpt-4o", "prompt_tokens": 800}},
+    ])
+
+    if result.has_flags:
+        print(f"Behavioral flags detected (max severity: {result.max_severity})")
+        for flag in result.flags:
+            print(f"  - {flag.detector}: severity {flag.severity}")
+
+    # Scan generated code for vulnerabilities
+    scan = gov.scan_code(
+        code="subprocess.call(user_input, shell=True)",
+        language="python",
+        file_path="app.py",
+    )
+    if not scan.is_clean:
+        print(f"Found {scan.vulnerability_count} vulnerabilities (threat score: {scan.threat_score})")
+
+# Session auto-ends, report generated
+```
+
+### Auto-Check Mode
+
+```python
+# Automatically check behavior every 5 events
+with GovernanceSession(client=client, task="Deploy pipeline", auto_check_interval=5) as gov:
+    for event in agent_event_stream:
+        result = gov.report_event(event["type"], event["data"])
+        if result and result.has_flags:
+            handle_flags(result.flags)
+```
+
+### LangGraph Integration
+
+```python
+from prysmai.integrations.langgraph import PrysmGraphMonitor
+
+# With governance enabled
+monitor = PrysmGraphMonitor(
+    api_key="sk-prysm-...",
+    governance=True,
+    governance_task="Research and summarize topic",
+)
+
+# Use as a LangGraph callback
+for chunk in graph.stream(inputs, config={"callbacks": [monitor]}):
+    process(chunk)
+
+# End governance and get report
+report = monitor.end_governance(outcome="completed")
+print(f"Behavior score: {report.behavior_score}")
+print(f"Nodes executed: {monitor.graph_summary['nodes_executed']}")
+print(f"State transitions: {monitor.state_transitions}")
+
+monitor.flush()  # Send remaining telemetry
+```
+
+### CrewAI Integration
+
+```python
+from prysmai.integrations.crewai import PrysmCrewMonitor
+
+monitor = PrysmCrewMonitor(
+    prysm_key="sk-prysm-...",
+    governance=True,
+    governance_task="Customer support workflow",
+)
+monitor.monitor_crew(crew)
+crew.kickoff()
+
+# Access governance report after completion
+if monitor.governance_report:
+    print(f"Behavior score: {monitor.governance_report.behavior_score}")
+```
+
+### Governance API Reference
+
+| Class | Method | Description |
+|-------|--------|-------------|
+| `GovernanceSession` | `start()` | Begin a governance session |
+| | `check_behavior(events)` | Report events and get behavioral feedback |
+| | `scan_code(code, language)` | Scan code for security vulnerabilities |
+| | `report_event(type, data)` | Report a single event (auto-checks if interval set) |
+| | `end(outcome)` | End session and get final report |
+| `PrysmGraphMonitor` | `start_governance(task)` | Explicitly start governance |
+| | `end_governance(outcome)` | End governance and get report |
+| | `graph_summary` | Node count, execution order, tool mapping |
+| | `state_transitions` | List of node-to-node transitions |
+| | `node_timings` | Duration per node in milliseconds |
+
+---
+
 ## Self-Hosted Proxy
 
 If you're running the Prysm proxy on your own infrastructure:
@@ -529,7 +649,7 @@ pip install -e ".[dev]"
 pytest tests/ -v
 ```
 
-The SDK includes 41 tests covering client initialization, environment variable fallbacks, sync/async client creation, `monitor()` behavior, context management (global, scoped, nested), header injection, full integration tests with mock HTTP server, and error propagation.
+The SDK includes 112+ tests covering client initialization, environment variable fallbacks, sync/async client creation, `monitor()` behavior, context management (global, scoped, nested), header injection, full integration tests with mock HTTP server, error propagation, governance session lifecycle, behavioral detection, code scanning, LangGraph node tracking, and framework integration governance.
 
 ---
 

@@ -12,19 +12,19 @@ from unittest.mock import MagicMock, patch, PropertyMock
 import pytest
 
 
-# ─── LangChain Integration Tests ────────────────────────────────
+# ─── LangGraph Integration Tests ────────────────────────────────
 
 
 class TestPrysmCallbackHandler:
-    """Test the LangChain callback handler."""
+    """Test the LangGraph callback handler (PrysmGraphMonitor)."""
 
     @pytest.fixture
     def handler(self):
         """Create a handler with mocked HTTP client."""
         with patch.dict("os.environ", {"PRYSM_API_KEY": "sk-prysm-test123"}):
-            from prysmai.integrations.langchain import PrysmCallbackHandler
+            from prysmai.integrations.langgraph import PrysmGraphMonitor
 
-            h = PrysmCallbackHandler(api_key="sk-prysm-test123")
+            h = PrysmGraphMonitor(api_key="sk-prysm-test123")
             h._client = MagicMock()
             return h
 
@@ -35,10 +35,10 @@ class TestPrysmCallbackHandler:
 
     def test_init_missing_api_key_raises(self):
         with patch.dict("os.environ", {}, clear=True):
-            from prysmai.integrations.langchain import PrysmCallbackHandler
+            from prysmai.integrations.langgraph import PrysmGraphMonitor
 
-            with pytest.raises(ValueError, match="Prysm API key is required"):
-                PrysmCallbackHandler(api_key="")
+            with pytest.raises(ValueError, match="API key is required"):
+                PrysmGraphMonitor(api_key="")
 
     def test_on_llm_start_records_run(self, handler):
         run_id = uuid.uuid4()
@@ -167,7 +167,7 @@ class TestPrysmCallbackHandler:
         call_args = handler._client.post.call_args
         assert "/telemetry/events" in call_args[0][0]
         body = call_args[1]["json"]
-        assert body["source"] == "langchain"
+        assert body["source"] == "langgraph"
         assert len(body["events"]) == 1
         assert handler._events == []
 
@@ -546,7 +546,7 @@ class TestSafeSerialize:
     """Test the _safe_serialize helper used across integrations."""
 
     def test_serialize_primitives(self):
-        from prysmai.integrations.langchain import _safe_serialize
+        from prysmai.integrations.langgraph import _safe_serialize
 
         assert _safe_serialize(None) is None
         assert _safe_serialize(42) == 42
@@ -555,7 +555,7 @@ class TestSafeSerialize:
         assert _safe_serialize("hello") == "hello"
 
     def test_serialize_truncates_long_strings(self):
-        from prysmai.integrations.langchain import _safe_serialize
+        from prysmai.integrations.langgraph import _safe_serialize
 
         long_str = "x" * 3000
         result = _safe_serialize(long_str)
@@ -563,19 +563,19 @@ class TestSafeSerialize:
         assert result.endswith("...[truncated]")
 
     def test_serialize_dict(self):
-        from prysmai.integrations.langchain import _safe_serialize
+        from prysmai.integrations.langgraph import _safe_serialize
 
         result = _safe_serialize({"key": "value", "nested": {"a": 1}})
         assert result == {"key": "value", "nested": {"a": 1}}
 
     def test_serialize_list(self):
-        from prysmai.integrations.langchain import _safe_serialize
+        from prysmai.integrations.langgraph import _safe_serialize
 
         result = _safe_serialize([1, 2, 3])
         assert result == [1, 2, 3]
 
     def test_serialize_unserializable(self):
-        from prysmai.integrations.langchain import _safe_serialize
+        from prysmai.integrations.langgraph import _safe_serialize
 
         class BadObj:
             def __str__(self):

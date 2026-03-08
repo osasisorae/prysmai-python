@@ -1,5 +1,5 @@
 """
-Prysm AI — Observability SDK for LLM applications.
+Prysm AI — Observability & Governance SDK for LLM applications.
 
 Usage:
     import openai
@@ -14,11 +14,13 @@ Usage:
         messages=[{"role": "user", "content": "Hello!"}],
     )
 
-Framework integrations (v0.4.0):
-    # LangChain
-    from prysmai.integrations.langchain import PrysmCallbackHandler
-    handler = PrysmCallbackHandler(prysm_key="sk-prysm-...")
-    chain.invoke({"input": "..."}, config={"callbacks": [handler]})
+Framework integrations (v0.5.0):
+    # LangGraph
+    from prysmai.integrations.langgraph import PrysmGraphMonitor
+    monitor = PrysmGraphMonitor(api_key="sk-prysm-...")
+    for chunk in graph.stream(inputs, config={"callbacks": [monitor]}):
+        ...
+    monitor.flush()
 
     # CrewAI
     from prysmai.integrations.crewai import PrysmCrewMonitor
@@ -29,10 +31,28 @@ Framework integrations (v0.4.0):
     from prysmai.integrations.llamaindex import PrysmSpanHandler
     handler = PrysmSpanHandler(prysm_key="sk-prysm-...")
     Settings.callback_manager.add_handler(handler)
+
+Governance (v0.5.0):
+    from prysmai import PrysmClient
+    from prysmai.governance import GovernanceSession
+
+    client = PrysmClient(prysm_key="sk-prysm-...")
+    with GovernanceSession(client, task="Fix auth bug", agent_type="claude_code") as gov:
+        gov.check_behavior([{"event_type": "llm_call", "data": {...}}])
+        gov.scan_code(code="...", language="python")
+    # Session auto-ends, report generated
 """
 
 from prysmai.client import monitor, PrysmClient
 from prysmai.context import prysm_context, PrysmContext
+from prysmai.governance import GovernanceSession
 
-__version__ = "0.4.1"
-__all__ = ["monitor", "PrysmClient", "prysm_context", "PrysmContext", "__version__"]
+__version__ = "0.5.0"
+__all__ = [
+    "monitor",
+    "PrysmClient",
+    "prysm_context",
+    "PrysmContext",
+    "GovernanceSession",
+    "__version__",
+]

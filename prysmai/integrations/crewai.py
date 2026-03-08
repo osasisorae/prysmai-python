@@ -10,6 +10,11 @@ Usage:
     monitor = PrysmCrewMonitor(api_key="sk-prysm-...")
     crew = Crew(agents=[...], tasks=[...], callbacks=[monitor])
 
+With governance (v0.5.0):
+    monitor = PrysmCrewMonitor(api_key="sk-prysm-...", governance=True)
+    crew = Crew(agents=[...], tasks=[...], callbacks=[monitor])
+    crew.kickoff()  # Governance session auto-managed
+
 Blueprint Reference: Section 9.3, page 28
 """
 
@@ -66,6 +71,10 @@ class PrysmCrewMonitor:
         - Tool usage per agent (tool name, input, output, errors)
         - Delegation events between agents
 
+    When governance=True, automatically wraps the crew execution in a
+    GovernanceSession, reporting events for behavioral analysis and
+    generating a governance report at completion.
+
     All captured data is sent to the Prysm telemetry endpoint as structured events.
     """
 
@@ -76,6 +85,8 @@ class PrysmCrewMonitor:
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        governance: bool = False,
+        governance_context: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize the Prysm CrewAI monitor.
@@ -86,6 +97,11 @@ class PrysmCrewMonitor:
             session_id: Optional session ID for grouping related crew executions.
             user_id: Optional user ID for attribution.
             metadata: Optional metadata dict attached to all events.
+            governance: Enable governance monitoring (v0.5.0+). When True,
+                automatically creates a GovernanceSession that tracks behavioral
+                patterns and generates a governance report.
+            governance_context: Additional context for the governance session
+                (e.g., {"environment": "production", "team": "backend"}).
         """
         import os
 
@@ -103,14 +119,29 @@ class PrysmCrewMonitor:
                 "Prysm API key is required. Pass api_key= or set PRYSM_API_KEY env var."
             )
 
+        # Governance configuration
+        self._governance_enabled = governance
+        self._governance_context = governance_context or {}
+        self._gov_session: Any = None  # GovernanceSession (lazy import)
+        self._gov_event_buffer: List[Dict[str, Any]] = []
+        self._gov_check_interval = 5  # Check behavior every N events
+        self._governance_report: Any = None  # Final SessionReport
+
         # Internal state
         self._events: List[Dict[str, Any]] = []
         self._agent_timers: Dict[str, float] = {}
         self._task_timers: Dict[str, float] = {}
         self._tool_timers: Dict[str, float] = {}
         self._crew_start_time: Optional[float] = None
+        self._crew_task_description: Optional[str] = None
+        self._available_tools: List[str] = []
         self._client = httpx.Client(timeout=30.0)
         self._subscribed = False
+
+    @property
+    def governance_report(self) -> Any:
+        """The governance report from the last crew execution (if governance=True)."""
+        return self._governance_report
 
     def subscribe(self) -> None:
         """Subscribe to CrewAI event bus events."""
@@ -135,6 +166,92 @@ class PrysmCrewMonitor:
                 "Using callback-based monitoring (limited telemetry)."
             )
 
+    # ─── Governance Helpers ─────────────────────────────────────
+
+    def _start_governance_session(self, task_description: str, tools: List[str]) -> None:
+        """Start a governance session for this crew execution."""
+        if not self._governance_enabled:
+            return
+
+        try:
+            from prysmai.governance import GovernanceSession
+
+            context = {
+                "framework": "crewai",
+                "session_id": self.session_id,
+                **self._governance_context,
+            }
+
+            self._gov_session = GovernanceSession(
+                prysm_key=self.api_key,
+                base_url=self.base_url,
+                task=task_description,
+                agent_type="crewai",
+                available_tools=tools if tools else None,
+                context=context,
+            )
+            self._gov_session.start()
+            logger.info(
+                f"Governance session started for CrewAI: {self._gov_session.session_id}"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to start governance session: {e}")
+            self._gov_session = None
+
+    def _report_governance_event(self, event_type: str, data: Dict[str, Any]) -> None:
+        """Buffer a governance event and auto-check when interval is reached."""
+        if not self._governance_enabled or not self._gov_session:
+            return
+
+        self._gov_event_buffer.append({
+            "event_type": event_type,
+            "data": data,
+            "timestamp": time.time(),
+        })
+
+        if len(self._gov_event_buffer) >= self._gov_check_interval:
+            try:
+                events = self._gov_event_buffer[:]
+                self._gov_event_buffer.clear()
+                result = self._gov_session.check_behavior(events)
+                if result.has_flags:
+                    logger.warning(
+                        f"[Governance] Behavioral flags in CrewAI execution: "
+                        f"{[f.detector for f in result.flags]}"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to check governance behavior: {e}")
+
+    def _end_governance_session(self, outcome: str = "completed",
+                                 output_summary: Optional[str] = None) -> None:
+        """End the governance session and store the report."""
+        if not self._governance_enabled or not self._gov_session:
+            return
+
+        try:
+            # Flush remaining buffered events
+            if self._gov_event_buffer:
+                try:
+                    self._gov_session.check_behavior(self._gov_event_buffer)
+                except Exception:
+                    pass
+                self._gov_event_buffer.clear()
+
+            self._governance_report = self._gov_session.end(
+                outcome=outcome,
+                output_summary=output_summary,
+            )
+            logger.info(
+                f"Governance session ended for CrewAI: "
+                f"score={self._governance_report.behavior_score}"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to end governance session: {e}")
+        finally:
+            if self._gov_session:
+                self._gov_session.close()
+                self._gov_session = None
+
     # ─── CrewAI Callback Interface (for Crew(callbacks=[monitor])) ──
 
     def __call__(self, event_type: str, data: Any = None) -> None:
@@ -158,6 +275,35 @@ class PrysmCrewMonitor:
     def _on_crew_start(self, event: Any) -> None:
         """Called when a crew kickoff begins."""
         self._crew_start_time = time.time()
+
+        # Extract task description and tools from the crew for governance
+        crew = getattr(event, "crew", None)
+        task_desc = "CrewAI crew execution"
+        tools: List[str] = []
+
+        if crew:
+            tasks = getattr(crew, "tasks", [])
+            if tasks:
+                descriptions = []
+                for t in tasks:
+                    desc = getattr(t, "description", None)
+                    if desc:
+                        descriptions.append(desc[:200])
+                task_desc = " | ".join(descriptions) if descriptions else task_desc
+                self._crew_task_description = task_desc
+
+            agents = getattr(crew, "agents", [])
+            for agent in agents:
+                agent_tools = getattr(agent, "tools", [])
+                for tool in agent_tools:
+                    tool_name = getattr(tool, "name", None) or str(type(tool).__name__)
+                    if tool_name not in tools:
+                        tools.append(tool_name)
+            self._available_tools = tools
+
+        # Start governance session
+        self._start_governance_session(task_desc, tools)
+
         ev = {
             "event_type": "crew_kickoff_started",
             "crew_id": str(uuid.uuid4()),
@@ -179,6 +325,15 @@ class PrysmCrewMonitor:
         self._buffer_event(ev)
         self.flush()
 
+        # End governance session
+        output_summary = _safe_serialize(output)
+        if isinstance(output_summary, str) and len(output_summary) > 500:
+            output_summary = output_summary[:500]
+        self._end_governance_session(
+            outcome="completed",
+            output_summary=str(output_summary) if output_summary else None,
+        )
+
     def _on_agent_start(self, event: Any) -> None:
         """Called when an agent execution begins."""
         agent = getattr(event, "agent", None)
@@ -193,6 +348,13 @@ class PrysmCrewMonitor:
             "agent_backstory": _truncate(getattr(agent, "backstory", None), 500) if agent else None,
         }
         self._buffer_event(ev)
+
+        # Report to governance
+        self._report_governance_event("llm_call", {
+            "model": "crewai_agent",
+            "agent_name": agent_name,
+            "agent_goal": getattr(agent, "goal", None) if agent else None,
+        })
 
     def _on_agent_end(self, event: Any) -> None:
         """Called when an agent execution completes."""
@@ -264,6 +426,13 @@ class PrysmCrewMonitor:
                 "_tool_id": tool_id,
             }
             self._buffer_event(ev)
+
+            # Report to governance
+            self._report_governance_event("tool_call", {
+                "tool_name": tool_name,
+                "input": tool_input,
+                "success": True,
+            })
         except Exception as e:
             logger.warning(f"Failed to capture tool_start event: {e}")
 
@@ -287,6 +456,14 @@ class PrysmCrewMonitor:
         }
         self._buffer_event(ev)
 
+        # Report tool result to governance
+        self._report_governance_event("tool_result", {
+            "tool_name": tool_name,
+            "output": _safe_serialize(getattr(event, "tool_output", None)),
+            "latency_ms": latency_ms,
+            "success": True,
+        })
+
     def _on_tool_error(self, event: Any) -> None:
         """Called when a tool usage fails."""
         try:
@@ -300,6 +477,13 @@ class PrysmCrewMonitor:
                 "error": str(error),
             }
             self._buffer_event(ev)
+
+            # Report error to governance
+            self._report_governance_event("error", {
+                "tool_name": tool_name,
+                "error": str(error),
+                "error_type": "tool_error",
+            })
         except Exception as e:
             logger.warning(f"Failed to capture tool_error event: {e}")
 
@@ -339,8 +523,10 @@ class PrysmCrewMonitor:
             logger.warning(f"Failed to send telemetry events to Prysm: {e}")
 
     def close(self) -> None:
-        """Flush remaining events and close the HTTP client."""
+        """Flush remaining events, end governance session, and close the HTTP client."""
         self.flush()
+        if self._gov_session and self._gov_session.is_active:
+            self._end_governance_session(outcome="partial")
         self._client.close()
 
     def __del__(self) -> None:
