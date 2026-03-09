@@ -2,7 +2,7 @@
 
 **The observability, governance, and security layer for LLM applications. One line of code. Full visibility. Built-in protection.**
 
-Prysm AI sits between your application and your LLM provider, capturing every request and response with full metrics — latency, token counts, cost, errors, and complete prompt/completion data. It also scans every request in real time for prompt injection attacks, PII leakage, and content policy violations. **New in v0.5.0:** the governance layer adds behavioral detection (early stopping, tool undertriggering) and code security scanning for AI agents, with native LangGraph and CrewAI integrations.
+Prysm AI sits between your application and your LLM provider, capturing every request and response with full metrics — latency, token counts, cost, errors, and complete prompt/completion data. It also scans every request in real time for prompt injection attacks, PII leakage, and content policy violations. **New in v0.6.0:** Microsoft Agent Framework integration (the successor to AutoGen) with three middleware classes for automatic agent, function, and chat telemetry capture. Plus: LangGraph, CrewAI, governance layer with behavioral detection, and code security scanning.
 
 [![PyPI version](https://img.shields.io/pypi/v/prysmai.svg)](https://pypi.org/project/prysmai/)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://python.org)
@@ -42,6 +42,7 @@ Your App  →  Prysm Proxy  →  LLM Provider
 | **Governance layer** | Behavioral detection (early stopping, tool undertriggering), code security scanning, policy enforcement for AI agents |
 | **LangGraph integration** | Graph-aware telemetry — node execution tracking, state transitions, tool-to-node mapping |
 | **CrewAI integration** | Automatic crew monitoring with governance support |
+| **MS Agent Framework** | Middleware-based telemetry for agent runs, function calls, and chat completions |
 
 ---
 
@@ -55,6 +56,9 @@ pip install prysmai[langgraph]
 
 # With CrewAI support
 pip install prysmai[crewai]
+
+# With Microsoft Agent Framework support
+pip install prysmai[agent-framework]
 
 # Everything
 pip install prysmai[all]
@@ -649,7 +653,7 @@ pip install -e ".[dev]"
 pytest tests/ -v
 ```
 
-The SDK includes 112+ tests covering client initialization, environment variable fallbacks, sync/async client creation, `monitor()` behavior, context management (global, scoped, nested), header injection, full integration tests with mock HTTP server, error propagation, governance session lifecycle, behavioral detection, code scanning, LangGraph node tracking, and framework integration governance.
+The SDK includes 140+ tests covering client initialization, environment variable fallbacks, sync/async client creation, `monitor()` behavior, context management (global, scoped, nested), header injection, full integration tests with mock HTTP server, error propagation, governance session lifecycle, behavioral detection, code scanning, LangGraph node tracking, and framework integration governance.
 
 ---
 

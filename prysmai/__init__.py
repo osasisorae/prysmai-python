@@ -32,6 +32,13 @@ Framework integrations (v0.5.0):
     handler = PrysmSpanHandler(prysm_key="sk-prysm-...")
     Settings.callback_manager.add_handler(handler)
 
+    # Microsoft Agent Framework
+    from prysmai.integrations.agent_framework import PrysmAgentFrameworkMonitor
+    monitor = PrysmAgentFrameworkMonitor(api_key="sk-prysm-...")
+    agent = client.as_agent(name="Bot", middleware=monitor.middleware())
+    await agent.run("prompt")
+    monitor.flush()
+
 Governance (v0.5.0):
     from prysmai import PrysmClient
     from prysmai.governance import GovernanceSession
