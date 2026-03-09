@@ -418,6 +418,8 @@ class GovernanceSession:
         self._checks_performed = 0
         self._scans_performed = 0
         self._flags: List[BehavioralFlag] = []
+        self._detectors: List[Any] = []  # BaseDetector instances
+        self._detections: List[Any] = []  # Detection instances from detectors
 
         # Transport
         self._transport = _McpTransport(
@@ -425,6 +427,62 @@ class GovernanceSession:
             api_key=self._api_key,
             timeout=timeout,
         )
+
+    # ─── Detectors ──────────────────────────────────────────────
+
+    def attach_detector(self, detector: Any) -> "GovernanceSession":
+        """
+        Attach a behavioral detector to this session.
+
+        Detectors process events locally (client-side) before events are
+        sent to the server. They can detect financial anomalies, resource
+        access violations, loops, and multi-agent coordination issues.
+
+        Args:
+            detector: A BaseDetector instance (e.g., FinancialAnomalyDetector).
+
+        Returns:
+            self (for chaining).
+        """
+        self._detectors.append(detector)
+        logger.info(f"Attached detector: {getattr(detector, 'name', type(detector).__name__)}")
+        return self
+
+    def detach_detector(self, detector_name: str) -> bool:
+        """
+        Detach a detector by name.
+
+        Returns:
+            True if a detector was removed, False if not found.
+        """
+        for i, d in enumerate(self._detectors):
+            if getattr(d, 'name', '') == detector_name:
+                self._detectors.pop(i)
+                return True
+        return False
+
+    @property
+    def detections(self) -> List[Any]:
+        """All detections raised by attached detectors."""
+        return self._detections
+
+    @property
+    def detector_summaries(self) -> List[Dict[str, Any]]:
+        """Get summaries from all attached detectors."""
+        return [d.get_summary() for d in self._detectors]
+
+    def _run_detectors(self, events: List[Dict[str, Any]]) -> List[Any]:
+        """Run all attached detectors against events, return detections."""
+        all_detections = []
+        for event in events:
+            for detector in self._detectors:
+                try:
+                    detections = detector.process_event(event)
+                    all_detections.extend(detections)
+                    self._detections.extend(detections)
+                except Exception as e:
+                    logger.warning(f"Detector {getattr(detector, 'name', '?')} error: {e}")
+        return all_detections
 
     # ─── Properties ─────────────────────────────────────────────
 
@@ -538,14 +596,35 @@ class GovernanceSession:
         self._active = False
 
         report_data = result.get("report", {})
+
+        # Merge local detector summaries into the report
+        server_detectors = report_data.get("detectors", [])
+        local_detector_summaries = self.detector_summaries
+        all_detectors = server_detectors + local_detector_summaries
+
+        # Merge local violations into the report
+        server_violations = result.get("violations", [])
+        local_violations = [
+            {
+                "detector": d.detector,
+                "category": d.category,
+                "message": d.message,
+                "severity": d.severity,
+                "evidence": d.evidence,
+            }
+            for d in self._detections
+            if d.severity in ("critical", "halt")
+        ]
+        all_violations = server_violations + local_violations
+
         report = SessionReport(
             session_id=result.get("session_id", self._session_id or ""),
             outcome=result.get("outcome", outcome),
             behavior_score=report_data.get("behavior_score"),
-            detectors=report_data.get("detectors", []),
+            detectors=all_detectors,
             summary=report_data.get("summary"),
             recommendations=report_data.get("recommendations", []),
-            violations=result.get("violations", []),
+            violations=all_violations,
             raw=result,
         )
 
@@ -590,6 +669,12 @@ class GovernanceSession:
                 normalized["timestamp"] = event["timestamp"]
             normalized_events.append(normalized)
 
+        # Run local detectors first (client-side)
+        local_detections = self._run_detectors(normalized_events)
+
+        # Check for halt-level detections — include in result even before server call
+        halt_detections = [d for d in local_detections if d.severity == "halt"]
+
         result = self._transport.call_tool("prysm_check_behavior", {
             "session_id": self._session_id,
             "events": normalized_events,
@@ -598,7 +683,7 @@ class GovernanceSession:
         self._total_events_reported += len(normalized_events)
         self._checks_performed += 1
 
-        # Parse flags
+        # Parse server flags
         flags = []
         for f in result.get("flags", []):
             flag = BehavioralFlag(
@@ -609,10 +694,33 @@ class GovernanceSession:
             flags.append(flag)
             self._flags.append(flag)
 
+        # Merge local detector detections as additional flags
+        for detection in local_detections:
+            severity_map = {"info": 1, "warning": 3, "critical": 5, "halt": 7}
+            flag = BehavioralFlag(
+                detector=detection.detector,
+                severity=severity_map.get(detection.severity, 3),
+                evidence=[detection.message, detection.evidence],
+            )
+            flags.append(flag)
+            self._flags.append(flag)
+
+        # Merge local violations
+        violations = result.get("violations", [])
+        for detection in local_detections:
+            if detection.severity in ("critical", "halt"):
+                violations.append({
+                    "detector": detection.detector,
+                    "category": detection.category,
+                    "message": detection.message,
+                    "severity": detection.severity,
+                    "evidence": detection.evidence,
+                })
+
         check_result = CheckResult(
             events_ingested=result.get("events_ingested", 0),
             flags=flags,
-            violations=result.get("violations", []),
+            violations=violations,
             recommendations=result.get("recommendations", []),
             raw=result,
         )

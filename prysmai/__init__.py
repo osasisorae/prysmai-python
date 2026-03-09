@@ -48,18 +48,50 @@ Governance (v0.5.0):
         gov.check_behavior([{"event_type": "llm_call", "data": {...}}])
         gov.scan_code(code="...", language="python")
     # Session auto-ends, report generated
+
+Advanced Detectors (v0.7.0):
+    from prysmai.detectors import (
+        FinancialAnomalyDetector,
+        ResourceAccessDetector,
+        LoopDetector,
+        MultiAgentMonitor,
+    )
+
+    gov = GovernanceSession(client, task="...", agent_type="langgraph")
+    gov.attach_detector(FinancialAnomalyDetector(budget_limit=50.0))
+    gov.attach_detector(ResourceAccessDetector(allowed_tools=["search", "calc"]))
+    gov.attach_detector(LoopDetector(max_repeated_calls=5))
+    gov.attach_detector(MultiAgentMonitor(expected_agents=["planner", "executor"]))
+    gov.start()
+    # Detectors run locally on every check_behavior() call
+    gov.check_behavior([{"event_type": "tool_call", "data": {"tool_name": "search"}}])
+    report = gov.end()  # Includes detector summaries and violations
 """
 
 from prysmai.client import monitor, PrysmClient
 from prysmai.context import prysm_context, PrysmContext
 from prysmai.governance import GovernanceSession
+from prysmai.detectors import (
+    FinancialAnomalyDetector,
+    ResourceAccessDetector,
+    LoopDetector,
+    MultiAgentMonitor,
+    BaseDetector,
+    Detection,
+)
 
-__version__ = "0.5.0"
+__version__ = "0.7.0"
 __all__ = [
     "monitor",
     "PrysmClient",
     "prysm_context",
     "PrysmContext",
     "GovernanceSession",
+    "FinancialAnomalyDetector",
+    "ResourceAccessDetector",
+    "LoopDetector",
+    "MultiAgentMonitor",
+    "BaseDetector",
+    "Detection",
     "__version__",
 ]
