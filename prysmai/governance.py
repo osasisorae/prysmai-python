@@ -38,13 +38,14 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 import httpx
+
+from prysmai.config import resolve_prysm_connection
 
 logger = logging.getLogger("prysmai.governance")
 
@@ -386,20 +387,13 @@ class GovernanceSession:
         timeout: float = 60.0,
         auto_check_interval: Optional[int] = None,
     ):
-        # Resolve auth from client or direct params
-        if client is not None:
-            self._api_key = client.prysm_key
-            self._base_url = client.base_url
-        else:
-            self._api_key = prysm_key or os.environ.get("PRYSM_API_KEY", "")
-            self._base_url = base_url or os.environ.get(
-                "PRYSM_BASE_URL", "https://prysmai.io/api/v1"
-            )
-
-        if not self._api_key:
-            raise ValueError(
-                "Prysm API key is required. Pass a PrysmClient, prysm_key=, or set PRYSM_API_KEY."
-            )
+        resolved = resolve_prysm_connection(
+            client=client,
+            prysm_key=prysm_key,
+            base_url=base_url,
+        )
+        self._api_key = resolved.prysm_key
+        self._base_url = resolved.base_url
 
         self._task = task
         self._agent_type = agent_type

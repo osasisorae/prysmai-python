@@ -19,7 +19,7 @@ def test_1_prysm_client_chat_completion():
 
     from prysmai import PrysmClient
 
-    client = PrysmClient(prysm_key=PRYSM_API_KEY)
+    client = PrysmClient(prysm_key=PRYSM_API_KEY, base_url=PRYSM_BASE_URL)
     oai = client.openai()
 
     response = oai.chat.completions.create(
@@ -36,7 +36,6 @@ def test_1_prysm_client_chat_completion():
     assert "4" in content, f"Expected '4' in response, got: {content}"
     assert response.usage.total_tokens > 0
     print("  PASSED: PrysmClient chat completion works")
-    return True
 
 
 def test_2_monitor_wrapper():
@@ -50,12 +49,12 @@ def test_2_monitor_wrapper():
     original = openai.OpenAI(api_key="sk-not-needed")
 
     # Wrap it through Prysm
-    monitored = monitor(original, prysm_key=PRYSM_API_KEY)
+    monitored = monitor(original, prysm_key=PRYSM_API_KEY, base_url=PRYSM_BASE_URL)
 
     # Verify it's routed through Prysm
     print(f"  Original base_url: {original.base_url}")
     print(f"  Monitored base_url: {monitored.base_url}")
-    assert "prysmai.io" in str(monitored.base_url), "Should be routed through Prysm"
+    assert PRYSM_BASE_URL.rstrip("/") in str(monitored.base_url), "Should be routed through Prysm"
 
     response = monitored.chat.completions.create(
         model="gpt-4o-mini",
@@ -67,7 +66,6 @@ def test_2_monitor_wrapper():
     print(f"  Response: {content}")
     assert content is not None and len(content) > 0
     print("  PASSED: monitor() wrapper works")
-    return True
 
 
 def test_3_prysm_context():
@@ -76,7 +74,7 @@ def test_3_prysm_context():
 
     from prysmai import PrysmClient, prysm_context
 
-    client = PrysmClient(prysm_key=PRYSM_API_KEY)
+    client = PrysmClient(prysm_key=PRYSM_API_KEY, base_url=PRYSM_BASE_URL)
     oai = client.openai()
 
     with prysm_context(user_id="test-user-42", session_id="test-session-99", metadata={"test": True}):
@@ -91,7 +89,6 @@ def test_3_prysm_context():
     print(f"  (Context headers were injected: user_id=test-user-42, session_id=test-session-99)")
     assert content is not None and len(content) > 0
     print("  PASSED: prysm_context works")
-    return True
 
 
 def test_4_multiple_models():
@@ -100,7 +97,7 @@ def test_4_multiple_models():
 
     from prysmai import PrysmClient
 
-    client = PrysmClient(prysm_key=PRYSM_API_KEY)
+    client = PrysmClient(prysm_key=PRYSM_API_KEY, base_url=PRYSM_BASE_URL)
     oai = client.openai()
 
     models_to_test = ["gpt-4o-mini"]
@@ -127,7 +124,6 @@ def test_4_multiple_models():
     assert len(models_to_test) >= 1
     print(f"  Models tested: {models_to_test}")
     print("  PASSED: Multi-model routing works")
-    return True
 
 
 def test_5_streaming():
@@ -136,7 +132,7 @@ def test_5_streaming():
 
     from prysmai import PrysmClient
 
-    client = PrysmClient(prysm_key=PRYSM_API_KEY)
+    client = PrysmClient(prysm_key=PRYSM_API_KEY, base_url=PRYSM_BASE_URL)
     oai = client.openai()
 
     stream = oai.chat.completions.create(
@@ -159,7 +155,6 @@ def test_5_streaming():
     assert len(chunks) > 1, "Should receive multiple stream chunks"
     assert len(full_content) > 0, "Should have content"
     print("  PASSED: Streaming works through proxy")
-    return True
 
 
 def test_6_error_handling():
@@ -168,7 +163,7 @@ def test_6_error_handling():
 
     from prysmai import PrysmClient
 
-    client = PrysmClient(prysm_key=PRYSM_API_KEY)
+    client = PrysmClient(prysm_key=PRYSM_API_KEY, base_url=PRYSM_BASE_URL)
     oai = client.openai()
 
     # Test with invalid model name
@@ -184,11 +179,10 @@ def test_6_error_handling():
     except Exception as e:
         print(f"  Expected error for invalid model: {type(e).__name__}: {str(e)[:200]}")
         print("  PASSED: Error handling works")
-        return True
+        return
 
     # If it didn't error, that's still OK — the proxy may route to a default
     print("  PASSED: Request handled (proxy may have used fallback)")
-    return True
 
 
 def test_7_response_headers():
@@ -227,8 +221,6 @@ def test_7_response_headers():
     else:
         print("  Note: No Prysm headers detected (may depend on project config)")
         print("  PASSED: Request completed successfully")
-
-    return True
 
 
 if __name__ == "__main__":

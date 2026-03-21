@@ -16,12 +16,12 @@ Architecture:
 from __future__ import annotations
 
 import json
-import os
 from typing import Any, Dict, Optional
 
 import httpx
 import openai
 
+from prysmai.config import resolve_prysm_connection
 from prysmai.context import _prysm_ctx
 
 
@@ -121,23 +121,15 @@ class PrysmClient:
         upstream_api_key: Optional[str] = None,
         forward_headers: Optional[Dict[str, str]] = None,
     ):
-        self.prysm_key = prysm_key or os.environ.get("PRYSM_API_KEY", "")
-        self.base_url = base_url or os.environ.get(
-            "PRYSM_BASE_URL", "https://prysmai.io/api/v1"
+        resolved = resolve_prysm_connection(
+            prysm_key=prysm_key,
+            base_url=base_url,
         )
+        self.prysm_key = resolved.prysm_key
+        self.base_url = resolved.base_url
         self.timeout = timeout
         self.upstream_api_key = upstream_api_key
         self.forward_headers = forward_headers
-
-        if not self.prysm_key:
-            raise ValueError(
-                "Prysm API key is required. Pass prysm_key= or set PRYSM_API_KEY env var."
-            )
-
-        if not self.prysm_key.startswith("sk-prysm-"):
-            raise ValueError(
-                f"Invalid Prysm API key format. Expected 'sk-prysm-...' but got '{self.prysm_key[:12]}...'"
-            )
 
     def openai(self, **kwargs: Any) -> openai.OpenAI:
         """
@@ -186,6 +178,76 @@ class PrysmClient:
             http_client=http_client,
             **kwargs,
         )
+
+    def mcp(self, timeout: float = 60.0) -> "PrysmMCPClient":
+        """
+        Create an MCP client for the same Prysm deployment.
+
+        This exposes Prysm's MCP surface as a first-class SDK entry point for
+        agent runtimes and tool-based integrations.
+        """
+        from prysmai.mcp import PrysmMCPClient
+
+        return PrysmMCPClient(client=self, timeout=timeout)
+
+    def session(
+        self,
+        *,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        governance_task: Optional[str] = None,
+        agent_type: str = "custom",
+        available_tools: Optional[list[str]] = None,
+        governance_context: Optional[Dict[str, Any]] = None,
+        auto_check_interval: Optional[int] = None,
+        governance_timeout: float = 60.0,
+    ) -> "PrysmSession":
+        """
+        Create a unified Prysm session linking proxy context and governance.
+
+        This is the SDK entry point for correlated runs across the control
+        plane. Proxy requests inside the scope inherit the same session and,
+        when enabled, governance session identifiers.
+        """
+        from prysmai.session import PrysmSession
+
+        return PrysmSession(
+            self,
+            user_id=user_id,
+            session_id=session_id,
+            metadata=metadata,
+            governance_task=governance_task,
+            agent_type=agent_type,
+            available_tools=available_tools,
+            governance_context=governance_context,
+            auto_check_interval=auto_check_interval,
+            governance_timeout=governance_timeout,
+        )
+
+    def langgraph_monitor(self, **kwargs: Any) -> Any:
+        """Create a LangGraph monitor using this Prysm client's connection config."""
+        from prysmai.integrations.langgraph import PrysmGraphMonitor
+
+        return PrysmGraphMonitor(client=self, **kwargs)
+
+    def crewai_monitor(self, **kwargs: Any) -> Any:
+        """Create a CrewAI monitor using this Prysm client's connection config."""
+        from prysmai.integrations.crewai import PrysmCrewMonitor
+
+        return PrysmCrewMonitor(client=self, **kwargs)
+
+    def agent_framework_monitor(self, **kwargs: Any) -> Any:
+        """Create an Agent Framework monitor using this Prysm client's connection config."""
+        from prysmai.integrations.agent_framework import PrysmAgentFrameworkMonitor
+
+        return PrysmAgentFrameworkMonitor(client=self, **kwargs)
+
+    def llamaindex_handler(self, **kwargs: Any) -> Any:
+        """Create a LlamaIndex handler using this Prysm client's connection config."""
+        from prysmai.integrations.llamaindex import PrysmSpanHandler
+
+        return PrysmSpanHandler(client=self, **kwargs)
 
 
 # ─── monitor(): the one-line integration ───

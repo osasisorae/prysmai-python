@@ -22,6 +22,10 @@ Framework integrations (v0.5.0):
         ...
     monitor.flush()
 
+    # Or create integrations from a shared PrysmClient
+    prysm = PrysmClient(prysm_key="sk-prysm-...")
+    monitor = prysm.langgraph_monitor()
+
     # CrewAI
     from prysmai.integrations.crewai import PrysmCrewMonitor
     mon = PrysmCrewMonitor(prysm_key="sk-prysm-...")
@@ -66,11 +70,38 @@ Advanced Detectors (v0.7.0):
     # Detectors run locally on every check_behavior() call
     gov.check_behavior([{"event_type": "tool_call", "data": {"tool_name": "search"}}])
     report = gov.end()  # Includes detector summaries and violations
+
+MCP surface:
+    from prysmai import PrysmClient
+
+    prysm = PrysmClient(prysm_key="sk-prysm-...")
+    mcp = prysm.mcp()
+
+    config = mcp.connection_config()
+    tools = mcp.list_tools()
+
+Unified session scope:
+    from prysmai import PrysmClient
+
+    prysm = PrysmClient(prysm_key="sk-prysm-...")
+
+    with prysm.session(
+        user_id="user_123",
+        metadata={"feature": "support"},
+        governance_task="Handle customer request",
+        agent_type="codex",
+    ) as run:
+        client = run.openai()
+        response = client.chat.completions.create(...)
+        run.report_event("tool_call", {"tool_name": "search"})
 """
 
 from prysmai.client import monitor, PrysmClient
+from prysmai.config import PrysmConnectionConfig
 from prysmai.context import prysm_context, PrysmContext
 from prysmai.governance import GovernanceSession
+from prysmai.mcp import PrysmMCPClient, PrysmMCPConfig
+from prysmai.session import PrysmSession, PrysmSessionIdentifiers
 from prysmai.detectors import (
     FinancialAnomalyDetector,
     ResourceAccessDetector,
@@ -84,6 +115,11 @@ __version__ = "0.7.0"
 __all__ = [
     "monitor",
     "PrysmClient",
+    "PrysmConnectionConfig",
+    "PrysmMCPClient",
+    "PrysmMCPConfig",
+    "PrysmSession",
+    "PrysmSessionIdentifiers",
     "prysm_context",
     "PrysmContext",
     "GovernanceSession",

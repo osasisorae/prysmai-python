@@ -8,7 +8,8 @@ import pytest
 import httpx
 import openai
 
-from prysmai import monitor, PrysmClient, __version__
+from prysmai import monitor, PrysmClient, __version__, PrysmConnectionConfig
+from prysmai.config import resolve_prysm_connection
 from prysmai.client import _PrysmTransport, _PrysmAsyncTransport
 from prysmai.context import prysm_context, PrysmContext, _prysm_ctx
 
@@ -69,6 +70,23 @@ class TestPrysmClientInit:
             PrysmClient(prysm_key="")
 
 
+class TestConnectionResolution:
+    def test_resolve_from_direct_values(self):
+        resolved = resolve_prysm_connection(
+            prysm_key=VALID_KEY,
+            base_url="https://custom.proxy/api/v1",
+        )
+        assert isinstance(resolved, PrysmConnectionConfig)
+        assert resolved.prysm_key == VALID_KEY
+        assert resolved.base_url == "https://custom.proxy/api/v1"
+
+    def test_resolve_from_client(self):
+        prysm = PrysmClient(prysm_key=VALID_KEY, base_url="https://custom.proxy/api/v1")
+        resolved = resolve_prysm_connection(client=prysm)
+        assert resolved.prysm_key == VALID_KEY
+        assert resolved.base_url == "https://custom.proxy/api/v1"
+
+
 # ─── PrysmClient.openai() ───
 
 
@@ -97,6 +115,13 @@ class TestPrysmClientOpenAI:
         pc = PrysmClient(prysm_key=VALID_KEY)
         client = pc.async_openai()
         assert client.api_key == VALID_KEY
+
+    def test_factory_creates_langgraph_monitor(self):
+        pc = PrysmClient(prysm_key=VALID_KEY, base_url="https://custom.proxy/api/v1")
+        with patch("prysmai.integrations.langgraph.httpx.Client"):
+            monitor = pc.langgraph_monitor()
+        assert monitor.api_key == VALID_KEY
+        assert monitor.base_url == "https://custom.proxy/api/v1"
 
 
 # ─── monitor() function ───

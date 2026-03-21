@@ -121,6 +121,60 @@ client = PrysmClient().openai()
 
 Open your Prysm dashboard. The request appears in the live feed within seconds, with full metrics.
 
+### Two Integration Surfaces, One Control Plane
+
+Prysm now has two first-class SDK surfaces that feed the same control plane:
+
+- **Proxy** for application traffic you route through Prysm yourself.
+- **MCP** for agent runtimes that connect to Prysm as a tool server.
+
+Both surfaces should lead to the same outcomes in Prysm: request traces, policy
+decisions, governance sessions, and reviewable evidence.
+
+```python
+from prysmai import PrysmClient
+
+prysm = PrysmClient(prysm_key="sk-prysm-...")
+
+# Proxy surface
+client = prysm.openai()
+
+# MCP surface
+mcp = prysm.mcp()
+tools = mcp.list_tools()
+```
+
+### Unified Session Scope
+
+Use `PrysmClient.session(...)` when you want one correlated run across proxy
+traffic and governance activity.
+
+```python
+from prysmai import PrysmClient
+
+prysm = PrysmClient(prysm_key="sk-prysm-...")
+
+with prysm.session(
+    user_id="user_123",
+    metadata={"feature": "support"},
+    governance_task="Handle a support request safely.",
+    agent_type="codex",
+    auto_check_interval=1,
+) as run:
+    client = run.openai()
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": "Reply with ok."}],
+        max_tokens=5,
+    )
+
+    run.report_event("tool_call", {"tool_name": "search"})
+
+print(run.identifiers.session_id)
+print(run.identifiers.governance_session_id)
+print(run.governance_report.outcome)
+```
+
 ---
 
 ## Supported Providers
@@ -193,6 +247,41 @@ client = prysm.openai()
 
 # Async client
 async_client = prysm.async_openai()
+```
+
+### `PrysmClient.mcp(timeout)`
+
+Create an MCP client for the same Prysm deployment.
+
+```python
+from prysmai import PrysmClient
+
+prysm = PrysmClient(prysm_key="sk-prysm-...")
+mcp = prysm.mcp()
+
+tools = mcp.list_tools()
+config = mcp.connection_config()
+```
+
+### `PrysmClient.session(...)`
+
+Create a unified session that links proxy requests and governance activity.
+
+```python
+from prysmai import PrysmClient
+
+prysm = PrysmClient(prysm_key="sk-prysm-...")
+
+with prysm.session(
+    user_id="user_123",
+    governance_task="Review an agent run",
+    agent_type="codex",
+) as run:
+    client = run.openai()
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": "Reply with ok."}],
+    )
 ```
 
 ### `monitor(client, prysm_key, base_url, timeout)`

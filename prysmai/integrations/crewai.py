@@ -56,6 +56,7 @@ except ImportError:
         )
 
 from prysmai.context import prysm_context
+from prysmai.config import resolve_prysm_connection
 
 logger = logging.getLogger("prysmai.integrations.crewai")
 
@@ -80,6 +81,7 @@ class PrysmCrewMonitor:
 
     def __init__(
         self,
+        client: Any = None,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         session_id: Optional[str] = None,
@@ -92,6 +94,7 @@ class PrysmCrewMonitor:
         Initialize the Prysm CrewAI monitor.
 
         Args:
+            client: Optional PrysmClient or PrysmMCPClient providing shared auth and base URL.
             api_key: Prysm API key (sk-prysm-...). Falls back to PRYSM_API_KEY env var.
             base_url: Prysm proxy base URL. Falls back to PRYSM_BASE_URL or https://prysmai.io/api/v1.
             session_id: Optional session ID for grouping related crew executions.
@@ -103,21 +106,16 @@ class PrysmCrewMonitor:
             governance_context: Additional context for the governance session
                 (e.g., {"environment": "production", "team": "backend"}).
         """
-        import os
-
-        self.api_key = api_key or os.environ.get("PRYSM_API_KEY", "")
-        self.base_url = (
-            base_url
-            or os.environ.get("PRYSM_BASE_URL", "https://prysmai.io/api/v1")
+        resolved = resolve_prysm_connection(
+            client=client,
+            prysm_key=api_key,
+            base_url=base_url,
         )
+        self.api_key = resolved.prysm_key
+        self.base_url = resolved.base_url
         self.session_id = session_id or str(uuid.uuid4())
         self.user_id = user_id
         self.metadata = metadata or {}
-
-        if not self.api_key:
-            raise ValueError(
-                "Prysm API key is required. Pass api_key= or set PRYSM_API_KEY env var."
-            )
 
         # Governance configuration
         self._governance_enabled = governance

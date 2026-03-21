@@ -122,6 +122,15 @@ class TestPrysmGraphMonitorInit:
             m = PrysmGraphMonitor(api_key=VALID_KEY, session_id="custom-123")
         assert m.session_id == "custom-123"
 
+    def test_init_with_prysm_client(self):
+        from prysmai import PrysmClient
+
+        with patch("prysmai.integrations.langgraph.httpx.Client"):
+            prysm = PrysmClient(prysm_key=VALID_KEY, base_url="https://custom.host/api/v1")
+            m = PrysmGraphMonitor(client=prysm)
+        assert m.api_key == VALID_KEY
+        assert m.base_url == "https://custom.host/api/v1"
+
 
 # ─── Node Tracking Tests ───
 
