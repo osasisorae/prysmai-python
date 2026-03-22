@@ -160,6 +160,102 @@ class PrysmSession:
             return dumped if isinstance(dumped, dict) else {"value": dumped}
         return {"repr": repr(value)}
 
+    def _session_event_defaults(self) -> Dict[str, Any]:
+        defaults: Dict[str, Any] = {}
+        governance_context = self.governance_context or {}
+
+        if isinstance(governance_context, dict):
+            for key in (
+                "agent_id",
+                "delegated_authority",
+                "approved_by",
+                "approval_id",
+                "human_approved",
+            ):
+                value = governance_context.get(key)
+                if value is not None:
+                    defaults[key] = value
+
+            parent_session_id = governance_context.get("parent_session_id")
+            if parent_session_id is not None:
+                defaults["parent_session_id"] = parent_session_id
+
+        if "agent_id" not in defaults:
+            defaults["agent_id"] = self.agent_type
+
+        if "parent_session_id" not in defaults:
+            defaults["parent_session_id"] = (
+                self.governance_session_id or self.session_id
+            )
+
+        if (
+            "human_approved" not in defaults
+            and (
+                defaults.get("approved_by") is not None
+                or defaults.get("approval_id") is not None
+            )
+        ):
+            defaults["human_approved"] = True
+
+        return defaults
+
+    def _merge_event_metadata(
+        self, metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        merged = self._session_event_defaults()
+        if metadata:
+            merged.update(metadata)
+        return merged
+
+    def _normalize_report_event(
+        self,
+        event_type: str,
+        data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        payload = dict(data)
+
+        if event_type in {
+            "llm_call",
+            "tool_call",
+            "decision",
+            "file_read",
+            "file_write",
+            "delegation",
+        }:
+            existing_metadata = payload.get("metadata")
+            if isinstance(existing_metadata, dict):
+                payload["metadata"] = self._merge_event_metadata(existing_metadata)
+            else:
+                payload["metadata"] = self._merge_event_metadata()
+
+        if event_type == "delegation":
+            from_agent = payload.get("from_agent") or payload.get("sender")
+            if from_agent is None:
+                from_agent = self._session_event_defaults().get("agent_id")
+            if from_agent is not None:
+                payload["from_agent"] = from_agent
+
+            to_agent = (
+                payload.get("to_agent")
+                or payload.get("target")
+                or payload.get("agent_id")
+            )
+            if to_agent is not None:
+                payload["to_agent"] = to_agent
+
+            if payload.get("parent_session_id") is None:
+                payload["parent_session_id"] = (
+                    self.governance_session_id or self.session_id
+                )
+
+            if payload.get("delegation_chain") is None and to_agent is not None:
+                payload["delegation_chain"] = [
+                    str(from_agent),
+                    str(to_agent),
+                ]
+
+        return payload
+
     def record_llm_call(
         self,
         *,
@@ -204,7 +300,7 @@ class PrysmSession:
             temperature=temperature,
             max_tokens=max_tokens,
             top_p=top_p,
-            metadata=metadata,
+            metadata=self._merge_event_metadata(metadata),
             logprobs=logprobs,
             run_security_scan=run_security_scan,
         )
@@ -231,7 +327,7 @@ class PrysmSession:
             success=success,
             duration_ms=duration_ms,
             external_trace_id=external_trace_id,
-            metadata=metadata,
+            metadata=self._merge_event_metadata(metadata),
         )
 
     def record_decision(
@@ -254,7 +350,7 @@ class PrysmSession:
             selected_action=selected_action,
             severity=severity,
             external_trace_id=external_trace_id,
-            metadata=metadata,
+            metadata=self._merge_event_metadata(metadata),
         )
 
     def record_file_change(
@@ -277,8 +373,35 @@ class PrysmSession:
             language=language,
             content=content,
             external_trace_id=external_trace_id,
-            metadata=metadata,
+            metadata=self._merge_event_metadata(metadata),
         )
+
+    def record_delegation(
+        self,
+        *,
+        to_agent: str,
+        from_agent: Optional[str] = None,
+        delegated_authority: Optional[str] = None,
+        parent_session_id: Optional[str] = None,
+        delegation_chain: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        timestamp: Optional[float] = None,
+    ) -> Optional[CheckResult]:
+        """Record a delegation event with canonical lineage metadata."""
+        payload: Dict[str, Any] = {
+            "to_agent": to_agent,
+        }
+        if from_agent is not None:
+            payload["from_agent"] = from_agent
+        if delegated_authority is not None:
+            payload["delegated_authority"] = delegated_authority
+        if parent_session_id is not None:
+            payload["parent_session_id"] = parent_session_id
+        if delegation_chain is not None:
+            payload["delegation_chain"] = delegation_chain
+        if metadata:
+            payload["metadata"] = metadata
+        return self.report_event("delegation", payload, timestamp=timestamp)
 
     def run_tool(
         self,
@@ -339,7 +462,7 @@ class PrysmSession:
             raise RuntimeError("Governance is not enabled for this Prysm session.")
         return self._governance.report_event(
             event_type=event_type,
-            data=data,
+            data=self._normalize_report_event(event_type, data),
             timestamp=timestamp,
         )
 

@@ -117,6 +117,12 @@ class TestPrysmSession:
             with prysm.session(
                 governance_task="Investigate issue",
                 agent_type="codex",
+                governance_context={
+                    "agent_id": "planner",
+                    "delegated_authority": "ops_admin",
+                    "approved_by": "security_lead",
+                    "approval_id": "apr_123",
+                },
             ) as run:
                 run.record_llm_call(
                     model="gpt-4.1-mini",
@@ -153,7 +159,14 @@ class TestPrysmSession:
             temperature=None,
             max_tokens=None,
             top_p=None,
-            metadata=None,
+            metadata={
+                "agent_id": "planner",
+                "delegated_authority": "ops_admin",
+                "approved_by": "security_lead",
+                "approval_id": "apr_123",
+                "human_approved": True,
+                "parent_session_id": "gov_123",
+            },
             logprobs=None,
             run_security_scan=True,
         )
@@ -165,7 +178,14 @@ class TestPrysmSession:
             success=None,
             duration_ms=None,
             external_trace_id=None,
-            metadata=None,
+            metadata={
+                "agent_id": "planner",
+                "delegated_authority": "ops_admin",
+                "approved_by": "security_lead",
+                "approval_id": "apr_123",
+                "human_approved": True,
+                "parent_session_id": "gov_123",
+            },
         )
         mock_mcp.record_decision.assert_called_once_with(
             session_id="gov_123",
@@ -174,7 +194,14 @@ class TestPrysmSession:
             selected_action="escalate",
             severity=None,
             external_trace_id=None,
-            metadata=None,
+            metadata={
+                "agent_id": "planner",
+                "delegated_authority": "ops_admin",
+                "approved_by": "security_lead",
+                "approval_id": "apr_123",
+                "human_approved": True,
+                "parent_session_id": "gov_123",
+            },
         )
         mock_mcp.record_file_change.assert_called_once_with(
             session_id="gov_123",
@@ -183,7 +210,14 @@ class TestPrysmSession:
             language=None,
             content=None,
             external_trace_id=None,
-            metadata=None,
+            metadata={
+                "agent_id": "planner",
+                "delegated_authority": "ops_admin",
+                "approved_by": "security_lead",
+                "approval_id": "apr_123",
+                "human_approved": True,
+                "parent_session_id": "gov_123",
+            },
         )
 
     @patch("prysmai.session.GovernanceSession")
@@ -239,6 +273,10 @@ class TestPrysmSession:
                 with prysm.session(
                     governance_task="Investigate issue",
                     agent_type="codex",
+                    governance_context={
+                        "agent_id": "planner",
+                        "delegated_authority": "ops_admin",
+                    },
                 ) as run:
                     run.run_tool("search", _boom, tool_input={"query": "docs"})
 
@@ -249,6 +287,9 @@ class TestPrysmSession:
         assert kwargs["success"] is False
         assert kwargs["tool_output"]["error"] == "search failed"
         assert kwargs["tool_output"]["exception_type"] == "RuntimeError"
+        assert kwargs["metadata"]["agent_id"] == "planner"
+        assert kwargs["metadata"]["delegated_authority"] == "ops_admin"
+        assert kwargs["metadata"]["parent_session_id"] == "gov_123"
 
     def test_governance_methods_raise_when_not_enabled(self):
         prysm = PrysmClient(prysm_key=VALID_KEY, base_url=VALID_URL)
@@ -257,3 +298,43 @@ class TestPrysmSession:
                 run.report_event("tool_call", {"tool_name": "search"})
             with pytest.raises(RuntimeError, match="Governance is not enabled"):
                 run.record_tool_call(tool_name="search")
+
+    @patch("prysmai.session.GovernanceSession")
+    def test_record_delegation_normalizes_lineage_payload(self, mock_gov_cls):
+        mock_gov = MagicMock()
+        mock_gov.session_id = "gov_123"
+        mock_gov.is_active = True
+        mock_gov.end.return_value = "report"
+        mock_gov_cls.return_value = mock_gov
+
+        prysm = PrysmClient(prysm_key=VALID_KEY, base_url=VALID_URL)
+
+        with prysm.session(
+            governance_task="Coordinate workers",
+            agent_type="codex",
+            governance_context={
+                "agent_id": "planner",
+                "delegated_authority": "task_router",
+            },
+        ) as run:
+            run.record_delegation(
+                to_agent="researcher",
+                metadata={"ticket": "T-1"},
+            )
+
+        mock_gov.report_event.assert_called_once_with(
+            event_type="delegation",
+            data={
+                "to_agent": "researcher",
+                "metadata": {
+                    "agent_id": "planner",
+                    "delegated_authority": "task_router",
+                    "parent_session_id": "gov_123",
+                    "ticket": "T-1",
+                },
+                "from_agent": "planner",
+                "parent_session_id": "gov_123",
+                "delegation_chain": ["planner", "researcher"],
+            },
+            timestamp=None,
+        )
