@@ -8,11 +8,15 @@ single logical run can be correlated across the Prysm control plane.
 from __future__ import annotations
 
 import uuid
+from dataclasses import asdict, is_dataclass
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from time import perf_counter
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from prysmai.context import prysm_context
 from prysmai.governance import CheckResult, GovernanceSession, ScanResult, SessionReport
+
+T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -128,6 +132,201 @@ class PrysmSession:
         if self._governance is None:
             raise RuntimeError("Governance is not enabled for this Prysm session.")
         return self._governance.check_behavior(events)
+
+    def _require_governance_session_id(self) -> str:
+        if self._governance is None or self.governance_session_id is None:
+            raise RuntimeError(
+                "Governance is not enabled for this Prysm session."
+            )
+        return self.governance_session_id
+
+    @staticmethod
+    def _coerce_payload(value: Any) -> Dict[str, Any]:
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, (str, int, float, bool)):
+            return {"value": value}
+        if isinstance(value, list):
+            return {"items": value}
+        if is_dataclass(value):
+            return asdict(value)
+        if hasattr(value, "model_dump") and callable(value.model_dump):
+            dumped = value.model_dump()
+            return dumped if isinstance(dumped, dict) else {"value": dumped}
+        if hasattr(value, "dict") and callable(value.dict):
+            dumped = value.dict()
+            return dumped if isinstance(dumped, dict) else {"value": dumped}
+        return {"repr": repr(value)}
+
+    def record_llm_call(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, Any]],
+        provider: Optional[str] = None,
+        completion: Optional[str] = None,
+        finish_reason: Optional[str] = None,
+        status: str = "success",
+        status_code: Optional[int] = None,
+        error_message: Optional[str] = None,
+        latency_ms: Optional[int] = None,
+        prompt_tokens: Optional[int] = None,
+        completion_tokens: Optional[int] = None,
+        total_tokens: Optional[int] = None,
+        cost_usd: Optional[float] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        top_p: Optional[float] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        logprobs: Optional[Dict[str, Any]] = None,
+        run_security_scan: bool = True,
+    ) -> Dict[str, Any]:
+        """Record an external model interaction under the active Prysm governance session."""
+        session_id = self._require_governance_session_id()
+        mcp = self.mcp(timeout=self.governance_timeout)
+        return mcp.record_llm_call(
+            session_id=session_id,
+            model=model,
+            messages=messages,
+            provider=provider,
+            completion=completion,
+            finish_reason=finish_reason,
+            status=status,
+            status_code=status_code,
+            error_message=error_message,
+            latency_ms=latency_ms,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            cost_usd=cost_usd,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+            metadata=metadata,
+            logprobs=logprobs,
+            run_security_scan=run_security_scan,
+        )
+
+    def record_tool_call(
+        self,
+        *,
+        tool_name: str,
+        tool_input: Optional[Dict[str, Any]] = None,
+        tool_output: Optional[Dict[str, Any]] = None,
+        success: Optional[bool] = None,
+        duration_ms: Optional[int] = None,
+        external_trace_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Record a tool call under the active Prysm governance session."""
+        session_id = self._require_governance_session_id()
+        mcp = self.mcp(timeout=self.governance_timeout)
+        return mcp.record_tool_call(
+            session_id=session_id,
+            tool_name=tool_name,
+            tool_input=tool_input,
+            tool_output=tool_output,
+            success=success,
+            duration_ms=duration_ms,
+            external_trace_id=external_trace_id,
+            metadata=metadata,
+        )
+
+    def record_decision(
+        self,
+        *,
+        description: str,
+        rationale: Optional[str] = None,
+        selected_action: Optional[str] = None,
+        severity: Optional[str] = None,
+        external_trace_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Record a reviewable decision under the active Prysm governance session."""
+        session_id = self._require_governance_session_id()
+        mcp = self.mcp(timeout=self.governance_timeout)
+        return mcp.record_decision(
+            session_id=session_id,
+            description=description,
+            rationale=rationale,
+            selected_action=selected_action,
+            severity=severity,
+            external_trace_id=external_trace_id,
+            metadata=metadata,
+        )
+
+    def record_file_change(
+        self,
+        *,
+        operation: str,
+        path: str,
+        language: Optional[str] = None,
+        content: Optional[str] = None,
+        external_trace_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Record a file read or write under the active Prysm governance session."""
+        session_id = self._require_governance_session_id()
+        mcp = self.mcp(timeout=self.governance_timeout)
+        return mcp.record_file_change(
+            session_id=session_id,
+            operation=operation,
+            path=path,
+            language=language,
+            content=content,
+            external_trace_id=external_trace_id,
+            metadata=metadata,
+        )
+
+    def run_tool(
+        self,
+        tool_name: str,
+        func: Callable[..., T],
+        *args: Any,
+        tool_input: Optional[Dict[str, Any]] = None,
+        external_trace_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> T:
+        """
+        Execute a tool callable and automatically record the result in Prysm.
+
+        This is the session-level automation helper for MCP parity. It executes
+        the tool, captures duration, serializes the output, and records the
+        corresponding `prysm_record_tool_call` event.
+        """
+        started = perf_counter()
+        try:
+            result = func(*args, **kwargs)
+        except Exception as exc:
+            duration_ms = int((perf_counter() - started) * 1000)
+            self.record_tool_call(
+                tool_name=tool_name,
+                tool_input=tool_input,
+                tool_output={
+                    "error": str(exc),
+                    "exception_type": type(exc).__name__,
+                },
+                success=False,
+                duration_ms=duration_ms,
+                external_trace_id=external_trace_id,
+                metadata=metadata,
+            )
+            raise
+
+        duration_ms = int((perf_counter() - started) * 1000)
+        self.record_tool_call(
+            tool_name=tool_name,
+            tool_input=tool_input,
+            tool_output=self._coerce_payload(result),
+            success=True,
+            duration_ms=duration_ms,
+            external_trace_id=external_trace_id,
+            metadata=metadata,
+        )
+        return result
 
     def report_event(
         self,

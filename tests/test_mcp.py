@@ -83,6 +83,81 @@ class TestPrysmMCPClientAPI:
             {"task_instructions": "test"},
         )
 
+    @patch.object(_McpTransport, "call_tool")
+    def test_record_tool_call_uses_structured_helper(self, mock_call_tool):
+        mock_call_tool.return_value = {"event_id": 1}
+        client = PrysmMCPClient(prysm_key=VALID_KEY)
+
+        result = client.record_tool_call(
+            session_id="sess_123",
+            tool_name="search",
+            tool_input={"query": "docs"},
+            tool_output={"hits": 3},
+            success=True,
+            duration_ms=42,
+        )
+
+        assert result == {"event_id": 1}
+        mock_call_tool.assert_called_once_with(
+            "prysm_record_tool_call",
+            {
+                "session_id": "sess_123",
+                "tool_name": "search",
+                "input": {"query": "docs"},
+                "output": {"hits": 3},
+                "success": True,
+                "duration_ms": 42,
+            },
+        )
+
+    @patch.object(_McpTransport, "call_tool")
+    def test_record_decision_uses_structured_helper(self, mock_call_tool):
+        mock_call_tool.return_value = {"event_id": 2}
+        client = PrysmMCPClient(prysm_key=VALID_KEY)
+
+        result = client.record_decision(
+            session_id="sess_123",
+            description="Escalate to human review",
+            selected_action="escalate",
+            severity="warning",
+        )
+
+        assert result == {"event_id": 2}
+        mock_call_tool.assert_called_once_with(
+            "prysm_record_decision",
+            {
+                "session_id": "sess_123",
+                "description": "Escalate to human review",
+                "selected_action": "escalate",
+                "severity": "warning",
+            },
+        )
+
+    @patch.object(_McpTransport, "call_tool")
+    def test_record_file_change_uses_structured_helper(self, mock_call_tool):
+        mock_call_tool.return_value = {"event_id": 3}
+        client = PrysmMCPClient(prysm_key=VALID_KEY)
+
+        result = client.record_file_change(
+            session_id="sess_123",
+            operation="write",
+            path="src/app.py",
+            language="python",
+            content="print('ok')",
+        )
+
+        assert result == {"event_id": 3}
+        mock_call_tool.assert_called_once_with(
+            "prysm_record_file_change",
+            {
+                "session_id": "sess_123",
+                "operation": "write",
+                "path": "src/app.py",
+                "language": "python",
+                "content": "print('ok')",
+            },
+        )
+
     def test_governance_session_uses_same_auth(self):
         client = PrysmMCPClient(prysm_key=VALID_KEY, base_url=VALID_URL, timeout=45.0)
 
