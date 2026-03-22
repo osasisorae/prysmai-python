@@ -70,6 +70,52 @@ class TestPrysmMCPClientAPI:
         assert tools == [{"name": "prysm_session_start"}]
         mock_list_tools.assert_called_once()
 
+    @patch.object(_McpTransport, "list_resources")
+    def test_list_resources_delegates_to_transport(self, mock_list_resources):
+        mock_list_resources.return_value = [{"uri": "prysm://policies"}]
+        client = PrysmMCPClient(prysm_key=VALID_KEY)
+
+        resources = client.list_resources()
+
+        assert resources == [{"uri": "prysm://policies"}]
+        mock_list_resources.assert_called_once()
+
+    @patch.object(_McpTransport, "read_resource")
+    def test_list_policies_reads_policy_resource(self, mock_read_resource):
+        mock_read_resource.return_value = {
+            "contents": [
+                {
+                    "uri": "prysm://policies",
+                    "text": '[{"name": "EU AI Act Human Oversight"}]',
+                }
+            ]
+        }
+        client = PrysmMCPClient(prysm_key=VALID_KEY)
+
+        policies = client.list_policies()
+
+        assert policies == [{"name": "EU AI Act Human Oversight"}]
+        mock_read_resource.assert_called_once_with("prysm://policies")
+
+    @patch.object(_McpTransport, "read_resource")
+    def test_get_session_report_reads_report_resource(self, mock_read_resource):
+        mock_read_resource.return_value = {
+            "contents": [
+                {
+                    "uri": "prysm://session/sess_123/report",
+                    "text": '{"sessionId": "sess_123", "violations": []}',
+                }
+            ]
+        }
+        client = PrysmMCPClient(prysm_key=VALID_KEY)
+
+        report = client.get_session_report("sess_123")
+
+        assert report == {"sessionId": "sess_123", "violations": []}
+        mock_read_resource.assert_called_once_with(
+            "prysm://session/sess_123/report"
+        )
+
     @patch.object(_McpTransport, "call_tool")
     def test_call_tool_delegates_to_transport(self, mock_call_tool):
         mock_call_tool.return_value = {"ok": True}

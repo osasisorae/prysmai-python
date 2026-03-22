@@ -336,6 +336,69 @@ class _McpTransport:
         result = _parse_sse_response(response.text)
         return result.get("tools", [])
 
+    def list_resources(self) -> List[Dict[str, Any]]:
+        """List available MCP resources."""
+        self._request_id += 1
+        payload = {
+            "jsonrpc": "2.0",
+            "id": self._request_id,
+            "method": "resources/list",
+            "params": {},
+        }
+
+        try:
+            response = self._client.post(
+                self.mcp_url,
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream",
+                },
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise GovernanceError(
+                f"MCP request failed with status {e.response.status_code}: {e.response.text[:500]}"
+            )
+        except httpx.RequestError as e:
+            raise GovernanceError(f"MCP request failed: {e}")
+
+        result = _parse_sse_response(response.text)
+        return result.get("resources", [])
+
+    def read_resource(self, uri: str) -> Dict[str, Any]:
+        """Read an MCP resource by URI."""
+        self._request_id += 1
+        payload = {
+            "jsonrpc": "2.0",
+            "id": self._request_id,
+            "method": "resources/read",
+            "params": {
+                "uri": uri,
+            },
+        }
+
+        try:
+            response = self._client.post(
+                self.mcp_url,
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream",
+                },
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise GovernanceError(
+                f"MCP request failed with status {e.response.status_code}: {e.response.text[:500]}"
+            )
+        except httpx.RequestError as e:
+            raise GovernanceError(f"MCP request failed: {e}")
+
+        return _parse_sse_response(response.text)
+
     def close(self) -> None:
         """Close the underlying HTTP client."""
         self._client.close()

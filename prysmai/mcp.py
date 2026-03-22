@@ -7,6 +7,7 @@ implicit behind GovernanceSession.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -88,6 +89,47 @@ class PrysmMCPClient:
     def list_tools(self) -> List[Dict[str, Any]]:
         """List available Prysm MCP tools."""
         return self._transport.list_tools()
+
+    def list_resources(self) -> List[Dict[str, Any]]:
+        """List available Prysm MCP resources."""
+        return self._transport.list_resources()
+
+    def read_resource(self, uri: str) -> Dict[str, Any]:
+        """Read a Prysm MCP resource by URI."""
+        return self._transport.read_resource(uri)
+
+    @staticmethod
+    def _extract_resource_payload(resource_result: Dict[str, Any]) -> Any:
+        contents = resource_result.get("contents", [])
+        if not contents:
+            return None
+
+        text = contents[0].get("text")
+        if text is None:
+            return contents[0]
+
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return text
+
+    def list_policies(self) -> List[Dict[str, Any]]:
+        """Read the authenticated project's policy resource."""
+        result = self.read_resource("prysm://policies")
+        payload = self._extract_resource_payload(result)
+        return payload if isinstance(payload, list) else []
+
+    def get_session_status(self, session_id: str) -> Dict[str, Any]:
+        """Read the current status resource for a session."""
+        result = self.read_resource(f"prysm://session/{session_id}/status")
+        payload = self._extract_resource_payload(result)
+        return payload if isinstance(payload, dict) else {}
+
+    def get_session_report(self, session_id: str) -> Dict[str, Any]:
+        """Read the completed-session report resource."""
+        result = self.read_resource(f"prysm://session/{session_id}/report")
+        payload = self._extract_resource_payload(result)
+        return payload if isinstance(payload, dict) else {}
 
     def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Call an MCP tool directly."""
