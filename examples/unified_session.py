@@ -41,7 +41,7 @@ def main() -> None:
         },
         auto_check_interval=1,
     ) as run:
-        client = run.openai()
+        client = run.llm()
 
         response = client.chat.completions.create(
             model="gpt-4o-mini",

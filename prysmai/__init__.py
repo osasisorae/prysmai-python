@@ -13,7 +13,7 @@ Start with `PrysmClient`:
     prysm = PrysmClient(prysm_key="sk-prysm-...")
 
     # Proxy path
-    client = prysm.openai()
+    client = prysm.llm()
     response = client.chat.completions.create(...)
 
     # MCP path
@@ -36,7 +36,7 @@ traffic and governance evidence:
         governance_task="Handle customer request safely",
         agent_type="codex",
     ) as run:
-        client = run.openai()
+        client = run.llm()
         client.chat.completions.create(...)
         run.record_decision(description="Respond safely")
         run.run_tool("search", lambda query: {"hits": 2}, "refund policy")

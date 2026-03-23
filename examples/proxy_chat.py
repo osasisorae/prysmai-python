@@ -12,7 +12,7 @@ from prysmai import PrysmClient, prysm_context
 
 def main() -> None:
     prysm = PrysmClient()
-    client = prysm.openai()
+    client = prysm.llm()
 
     with prysm_context(
         user_id="demo-user",

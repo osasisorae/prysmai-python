@@ -64,7 +64,7 @@ Choose a **unified session** when:
 from prysmai import PrysmClient
 
 prysm = PrysmClient(prysm_key="sk-prysm-...")
-client = prysm.openai()
+client = prysm.llm()
 
 response = client.chat.completions.create(
     model="gpt-4o-mini",
@@ -77,6 +77,10 @@ This does three things:
 1. routes traffic through Prysm
 2. authenticates with your Prysm API key
 3. lets Prysm use the provider credentials stored in your project
+
+`prysm.openai()` still works, but `prysm.llm()` is the better name going
+forward because the upstream model may be OpenAI, Anthropic, Gemini, or another
+configured provider.
 
 ### Wrap an Existing Client
 
@@ -197,7 +201,7 @@ with prysm.session(
     },
     auto_check_interval=1,
 ) as run:
-    client = run.openai()
+    client = run.llm()
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",

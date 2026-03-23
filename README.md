@@ -53,7 +53,7 @@ prysm = PrysmClient(
     base_url="https://prysmai.io/api/v1",
 )
 
-client = prysm.openai()
+client = prysm.llm()
 
 response = client.chat.completions.create(
     model="gpt-4o-mini",
@@ -123,7 +123,7 @@ with prysm.session(
     agent_type="codex",
     auto_check_interval=1,
 ) as run:
-    client = run.openai()
+    client = run.llm()
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": "Draft a short response."}],
@@ -177,10 +177,15 @@ from prysmai import PrysmClient
 
 prysm = PrysmClient(prysm_key="sk-prysm-...")
 
-proxy_client = prysm.openai()
+proxy_client = prysm.llm()
 mcp_client = prysm.mcp()
 session = prysm.session(governance_task="Review a change", agent_type="codex")
 ```
+
+`prysm.openai()` still works as a backward-compatible alias. The newer
+`prysm.llm()` name is more honest because Prysm can route to Claude, Gemini,
+vLLM, Ollama, or another configured provider behind the same OpenAI-compatible
+surface.
 
 ### `prysm_context`
 

@@ -114,11 +114,23 @@ class PrysmSession:
         return self._active
 
     def openai(self, **kwargs: Any) -> Any:
-        """Create a proxied OpenAI client scoped to this session."""
+        """Backward-compatible alias for llm() within this session."""
+        return self._client.openai(**kwargs)
+
+    def llm(self, **kwargs: Any) -> Any:
+        """Create a proxied OpenAI-compatible client scoped to this session."""
+        if hasattr(self._client, "llm"):
+            return self._client.llm(**kwargs)
         return self._client.openai(**kwargs)
 
     def async_openai(self, **kwargs: Any) -> Any:
-        """Create an async proxied OpenAI client scoped to this session."""
+        """Backward-compatible alias for async_llm() within this session."""
+        return self._client.async_openai(**kwargs)
+
+    def async_llm(self, **kwargs: Any) -> Any:
+        """Create an async proxied OpenAI-compatible client scoped to this session."""
+        if hasattr(self._client, "async_llm"):
+            return self._client.async_llm(**kwargs)
         return self._client.async_openai(**kwargs)
 
     def mcp(self, timeout: Optional[float] = None) -> Any:

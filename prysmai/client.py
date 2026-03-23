@@ -98,11 +98,11 @@ class _PrysmAsyncTransport(httpx.AsyncBaseTransport):
 
 class PrysmClient:
     """
-    A thin configuration object that produces monitored OpenAI clients.
+    A thin configuration object that produces monitored LLM clients.
 
     Usage:
         prysm = PrysmClient(prysm_key="sk-prysm-...", base_url="https://prysmai.io/api/v1")
-        client = prysm.openai()
+        client = prysm.llm()
         response = client.chat.completions.create(...)
 
     For CI/CD integrations (e.g., GitLab AI Gateway):
@@ -131,9 +131,9 @@ class PrysmClient:
         self.upstream_api_key = upstream_api_key
         self.forward_headers = forward_headers
 
-    def openai(self, **kwargs: Any) -> openai.OpenAI:
+    def llm(self, **kwargs: Any) -> openai.OpenAI:
         """
-        Create a sync OpenAI client routed through Prysm.
+        Create a sync OpenAI-compatible client routed through Prysm.
 
         Any extra kwargs are passed to openai.OpenAI().
         """
@@ -155,9 +155,18 @@ class PrysmClient:
             **kwargs,
         )
 
-    def async_openai(self, **kwargs: Any) -> openai.AsyncOpenAI:
+    def openai(self, **kwargs: Any) -> openai.OpenAI:
         """
-        Create an async OpenAI client routed through Prysm.
+        Backward-compatible alias for llm().
+
+        Prysm's proxy is OpenAI-compatible even when the upstream provider is
+        Anthropic, Gemini, vLLM, Ollama, or another configured provider.
+        """
+        return self.llm(**kwargs)
+
+    def async_llm(self, **kwargs: Any) -> openai.AsyncOpenAI:
+        """
+        Create an async OpenAI-compatible client routed through Prysm.
 
         Any extra kwargs are passed to openai.AsyncOpenAI().
         """
@@ -178,6 +187,12 @@ class PrysmClient:
             http_client=http_client,
             **kwargs,
         )
+
+    def async_openai(self, **kwargs: Any) -> openai.AsyncOpenAI:
+        """
+        Backward-compatible alias for async_llm().
+        """
+        return self.async_llm(**kwargs)
 
     def mcp(self, timeout: float = 60.0) -> "PrysmMCPClient":
         """

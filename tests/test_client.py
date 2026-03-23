@@ -4,9 +4,12 @@ Tests for prysm.client — monitor(), PrysmClient, and transport layers.
 
 import os
 import json
+import sys
 import pytest
 import httpx
 import openai
+from types import SimpleNamespace
+from unittest.mock import patch, MagicMock
 
 from prysmai import monitor, PrysmClient, __version__, PrysmConnectionConfig
 from prysmai.config import resolve_prysm_connection
@@ -91,10 +94,22 @@ class TestConnectionResolution:
 
 
 class TestPrysmClientOpenAI:
+    def test_returns_llm_client(self):
+        pc = PrysmClient(prysm_key=VALID_KEY)
+        client = pc.llm()
+        assert isinstance(client, openai.OpenAI)
+
     def test_returns_openai_client(self):
         pc = PrysmClient(prysm_key=VALID_KEY)
         client = pc.openai()
         assert isinstance(client, openai.OpenAI)
+
+    def test_openai_alias_matches_llm(self):
+        pc = PrysmClient(prysm_key=VALID_KEY, base_url="http://localhost:3000/v1")
+        llm_client = pc.llm()
+        openai_client = pc.openai()
+        assert str(llm_client.base_url) == str(openai_client.base_url)
+        assert llm_client.api_key == openai_client.api_key
 
     def test_client_uses_prysm_key(self):
         pc = PrysmClient(prysm_key=VALID_KEY)
@@ -108,18 +123,24 @@ class TestPrysmClientOpenAI:
 
     def test_returns_async_client(self):
         pc = PrysmClient(prysm_key=VALID_KEY)
-        client = pc.async_openai()
+        client = pc.async_llm()
         assert isinstance(client, openai.AsyncOpenAI)
 
     def test_async_client_uses_prysm_key(self):
         pc = PrysmClient(prysm_key=VALID_KEY)
-        client = pc.async_openai()
+        client = pc.async_llm()
         assert client.api_key == VALID_KEY
 
     def test_factory_creates_langgraph_monitor(self):
         pc = PrysmClient(prysm_key=VALID_KEY, base_url="https://custom.proxy/api/v1")
-        with patch("prysmai.integrations.langgraph.httpx.Client"):
+        fake_monitor = MagicMock(api_key=VALID_KEY, base_url="https://custom.proxy/api/v1")
+        fake_cls = MagicMock(return_value=fake_monitor)
+        fake_module = SimpleNamespace(PrysmGraphMonitor=fake_cls)
+
+        with patch.dict(sys.modules, {"prysmai.integrations.langgraph": fake_module}):
             monitor = pc.langgraph_monitor()
+
+        fake_cls.assert_called_once_with(client=pc)
         assert monitor.api_key == VALID_KEY
         assert monitor.base_url == "https://custom.proxy/api/v1"
 
