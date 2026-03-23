@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "prysmai"
 version = "0.7.0"
-description = "Prysm AI — Security, governance, and observability for autonomous AI agents. Financial anomaly detection, resource access control, loop detection, multi-agent coordination monitoring, behavioral analysis, cost tracking, multi-provider support (OpenAI, Anthropic, Google Gemini, vLLM, Ollama), prompt injection detection, PII redaction, and policy enforcement. One line of code."
+description = "PrysmAI Python SDK for the proxy and MCP paths into one AI control plane. Capture traces, security findings, policy decisions, and governance evidence for production AI systems."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"

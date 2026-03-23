@@ -1,150 +1,112 @@
-# Prysm AI — Python SDK
+# Prysm AI Python SDK
 
-**The observability, governance, and security layer for LLM applications. One line of code. Full visibility. Built-in protection.**
+PrysmAI is the control plane for production AI.
 
-Prysm AI sits between your application and your LLM provider, capturing every request and response with full metrics — latency, token counts, cost, errors, and complete prompt/completion data. It also scans every request in real time for prompt injection attacks, PII leakage, and content policy violations. **New in v0.6.0:** Microsoft Agent Framework integration (the successor to AutoGen) with three middleware classes for automatic agent, function, and chat telemetry capture. Plus: LangGraph, CrewAI, governance layer with behavioral detection, and code security scanning.
+This SDK gives you two integration paths into the same Prysm control plane:
+
+- **Proxy path** for application traffic you route through Prysm
+- **MCP path** for agent runtimes that connect to Prysm as a governance and evidence surface
+
+Both paths should produce the same operational outcome in Prysm:
+
+- request traces
+- security findings
+- policy decisions
+- governance sessions
+- reviewable evidence
 
 [![PyPI version](https://img.shields.io/pypi/v/prysmai.svg)](https://pypi.org/project/prysmai/)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+```text
+Your App          -> Prysm Proxy (/api/v1) -> Model Provider
+Agent Runtime     -> Prysm MCP   (/api/mcp) -> Same control plane
 ```
-Your App  →  Prysm Proxy  →  LLM Provider
-              ↓               (OpenAI, Anthropic, Google Gemini, vLLM, Ollama, or any OpenAI-compatible endpoint)
-         Full observability + security
-         (latency, tokens, cost, errors,
-          alerts, traces, injection detection,
-          PII redaction, content policies)
-```
-
----
-
-## What You Get
-
-| Feature | Description |
-|---------|-------------|
-| **Multi-provider proxy** | OpenAI, Anthropic (auto-translated), Google Gemini (native OpenAI-compat), vLLM, Ollama, any OpenAI-compatible endpoint |
-| **Full trace capture** | Every request/response logged with tokens, latency, cost, model, and custom metadata |
-| **Real-time dashboard** | Live metrics charts, request explorer, model usage breakdown, WebSocket live feed |
-| **3 proxy endpoints** | Chat completions, text completions, and embeddings |
-| **Streaming support** | SSE passthrough with Time to First Token (TTFT) measurement |
-| **Alerting engine** | Email, Slack, Discord, and custom webhook alerts on metric thresholds |
-| **Team management** | Invite members via email, assign roles, manage access per organization |
-| **API key auth** | `sk-prysm-*` keys with SHA-256 hashing, create/revoke from dashboard |
-| **Cost tracking** | Automatic cost calculation for 40+ models (OpenAI, Anthropic, Gemini), custom pricing for any model |
-| **Tool calling & logprobs** | Captured and displayed in the trace detail panel |
-| **Latency percentiles** | Pre-aggregated p50, p95, p99 latency and TTFT metrics |
-| **Usage enforcement** | Free tier limit (10K requests/month) with configurable plan limits |
-| **Prompt injection detection** | 20+ attack patterns across 7 categories (role manipulation, delimiter injection, jailbreaks, etc.) |
-| **PII detection & redaction** | 8 data types (email, phone, SSN, credit cards, API keys, IPs) with mask/hash/block modes |
-| **Content policy enforcement** | 5 built-in policies + custom keywords, composite threat scoring (0–100) |
-| **Security dashboard** | Real-time threat log, stats overview, and per-organization configuration |
-| **Governance layer** | Behavioral detection (early stopping, tool undertriggering), code security scanning, policy enforcement for AI agents |
-| **LangGraph integration** | Graph-aware telemetry — node execution tracking, state transitions, tool-to-node mapping |
-| **CrewAI integration** | Automatic crew monitoring with governance support |
-| **MS Agent Framework** | Middleware-based telemetry for agent runs, function calls, and chat completions |
-
----
 
 ## Installation
 
 ```bash
 pip install prysmai
 
-# With LangGraph support
+# Optional integrations
 pip install prysmai[langgraph]
-
-# With CrewAI support
 pip install prysmai[crewai]
-
-# With Microsoft Agent Framework support
 pip install prysmai[agent-framework]
-
-# Everything
 pip install prysmai[all]
 ```
 
-Requires Python 3.9+ and depends on `openai` (v1.0+) and `httpx` (v0.24+), both installed automatically.
+Requires Python 3.9+.
 
----
+## The Golden Paths
 
-## Quick Start
+### 1. Proxy path
 
-### Option 1: PrysmClient (Recommended)
-
-The simplest way to get started. No OpenAI API key needed in your code — the proxy uses the credentials stored in your project settings.
+Use this when you are building an AI application directly and want Prysm in the
+request path.
 
 ```python
 from prysmai import PrysmClient
 
-client = PrysmClient(prysm_key="sk-prysm-...").openai()
+prysm = PrysmClient(
+    prysm_key="sk-prysm-...",
+    base_url="https://prysmai.io/api/v1",
+)
+
+client = prysm.openai()
 
 response = client.chat.completions.create(
     model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "Explain quantum computing"}],
+    messages=[{"role": "user", "content": "Explain quantum computing simply."}],
 )
 
 print(response.choices[0].message.content)
 ```
 
-### Option 2: Wrap an Existing Client
+### 2. Wrap an existing OpenAI client
 
-If you already have a configured OpenAI client and want to add observability on top:
+Use this when you already have an OpenAI client and want to add Prysm without
+rewriting the rest of your app.
 
 ```python
 from openai import OpenAI
 from prysmai import monitor
 
-client = OpenAI()  # Uses OPENAI_API_KEY env var
+client = OpenAI()
 monitored = monitor(client, prysm_key="sk-prysm-...")
 
 response = monitored.chat.completions.create(
     model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "Explain quantum computing"}],
+    messages=[{"role": "user", "content": "Summarize the meeting notes."}],
 )
 ```
 
-### Option 3: Environment Variable
+### 3. MCP path
 
-Set `PRYSM_API_KEY` in your environment and skip the `prysm_key` parameter entirely:
-
-```bash
-export PRYSM_API_KEY="sk-prysm-your-key-here"
-```
-
-```python
-from prysmai import PrysmClient
-
-# Reads PRYSM_API_KEY automatically
-client = PrysmClient().openai()
-```
-
-Open your Prysm dashboard. The request appears in the live feed within seconds, with full metrics.
-
-### Two Integration Surfaces, One Control Plane
-
-Prysm now has two first-class SDK surfaces that feed the same control plane:
-
-- **Proxy** for application traffic you route through Prysm yourself.
-- **MCP** for agent runtimes that connect to Prysm as a tool server.
-
-Both surfaces should lead to the same outcomes in Prysm: request traces, policy
-decisions, governance sessions, and reviewable evidence.
+Use this when your runtime connects to MCP-compatible tools and you want Prysm
+to act as the control and evidence layer.
 
 ```python
 from prysmai import PrysmClient
 
 prysm = PrysmClient(prysm_key="sk-prysm-...")
-
-# Proxy surface
-client = prysm.openai()
-
-# MCP surface
 mcp = prysm.mcp()
-tools = mcp.list_tools()
+
+config = mcp.connection_config()
+
+print(config.server_url)
+print(config.headers)
 ```
 
-### Unified Session Scope
+For MCP-compatible runtimes, hand them:
+
+- `config.server_url`
+- `config.headers`
+
+Then use Prysm's MCP tools and resources to record model calls, tool activity,
+decisions, file changes, and governance evidence.
+
+### 4. Unified session scope
 
 Use `PrysmClient.session(...)` when you want one correlated run across proxy
 traffic and governance activity.
@@ -157,608 +119,171 @@ prysm = PrysmClient(prysm_key="sk-prysm-...")
 with prysm.session(
     user_id="user_123",
     metadata={"feature": "support"},
-    governance_task="Handle a support request safely.",
+    governance_task="Resolve a customer support request safely.",
     agent_type="codex",
     auto_check_interval=1,
 ) as run:
     client = run.openai()
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "Reply with ok."}],
-        max_tokens=5,
+        messages=[{"role": "user", "content": "Draft a short response."}],
     )
 
-    run.report_event("tool_call", {"tool_name": "search"})
+    run.record_decision(
+        description="Send a short and safe reply",
+        selected_action="respond",
+        severity="low",
+    )
+
+    run.run_tool(
+        "search_docs",
+        lambda query: {"result_count": 2, "query": query},
+        "refund policy",
+        tool_input={"query": "refund policy"},
+    )
 
 print(run.identifiers.session_id)
 print(run.identifiers.governance_session_id)
-print(run.governance_report.outcome)
 ```
 
----
+## Choosing The Right Path
 
-## Supported Providers
+Use the **proxy path** when:
 
-The Prysm proxy supports any LLM provider. Configure your provider in the project settings — the SDK handles the rest.
+- your app already talks directly to an LLM provider
+- you want request/response capture automatically
+- you want security scanning on proxied traffic with minimal code changes
 
-| Provider | Base URL | Notes |
-|----------|----------|-------|
-| **OpenAI** | `https://api.openai.com/v1` | Default. All models supported (GPT-4o, GPT-4o-mini, o1, o3-mini, etc.) |
-| **Anthropic** | `https://api.anthropic.com` | Auto-translated to/from OpenAI format. Use OpenAI SDK syntax — Prysm handles the conversion. |
-| **Google Gemini** | `https://generativelanguage.googleapis.com/v1beta/openai` | Native OpenAI-compatible endpoint. All Gemini models (2.5 Pro, 2.5 Flash, 2.0 Flash, 1.5 Pro, etc.) |
-| **vLLM** | `http://your-server:8000/v1` | Any vLLM-served model (Llama, Mistral, Qwen, etc.) |
-| **Ollama** | `http://localhost:11434/v1` | Local models via Ollama |
-| **Custom** | Any URL | Any OpenAI-compatible endpoint (Together AI, Groq, Fireworks, etc.) |
+Use the **MCP path** when:
 
-### Anthropic Example
+- your runtime is MCP-native
+- you are connecting Prysm to an external agent runtime
+- you want session, decision, tool, and file evidence even when the model call
+  happens outside Prysm's HTTP proxy
 
-Use standard OpenAI SDK syntax — the proxy translates automatically:
+Use a **unified session** when:
+
+- one run spans model calls, tools, file changes, and governance activity
+- you want one correlated session in the Prysm dashboard
+
+## Core SDK Surface
+
+### `PrysmClient`
+
+The root client for the Prysm control plane.
 
 ```python
 from prysmai import PrysmClient
 
-# Your project is configured with Anthropic as the provider
+prysm = PrysmClient(prysm_key="sk-prysm-...")
+
+proxy_client = prysm.openai()
+mcp_client = prysm.mcp()
+session = prysm.session(governance_task="Review a change", agent_type="codex")
+```
+
+### `prysm_context`
+
+Attach user, session, and metadata to proxied requests.
+
+```python
+from prysmai import PrysmClient, prysm_context
+
 client = PrysmClient(prysm_key="sk-prysm-...").openai()
 
-# Use OpenAI format — Prysm translates to Anthropic's API and back
-response = client.chat.completions.create(
-    model="claude-sonnet-4-20250514",
-    messages=[{"role": "user", "content": "Explain quantum computing"}],
-)
-```
-
-### Google Gemini Example
-
-Google Gemini works through its native OpenAI-compatible endpoint — no translation needed:
-
-```python
-from prysmai import PrysmClient
-
-# Your project is configured with Google Gemini as the provider
-client = PrysmClient(prysm_key="sk-prysm-...").openai()
-
-response = client.chat.completions.create(
-    model="gemini-2.5-flash",
-    messages=[{"role": "user", "content": "Explain quantum computing"}],
-)
-```
-
----
-
-## API Reference
-
-### `PrysmClient(prysm_key, base_url, timeout)`
-
-The primary entry point. Creates sync or async OpenAI clients routed through the Prysm proxy.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `prysm_key` | `str` | `PRYSM_API_KEY` env var | Your Prysm API key (`sk-prysm-...`) |
-| `base_url` | `str` | `https://prysmai.io/api/v1` | Prysm proxy URL |
-| `timeout` | `float` | `120.0` | Request timeout in seconds |
-
-```python
-from prysmai import PrysmClient
-
-prysm = PrysmClient(prysm_key="sk-prysm-...")
-
-# Sync client
-client = prysm.openai()
-
-# Async client
-async_client = prysm.async_openai()
-```
-
-### `PrysmClient.mcp(timeout)`
-
-Create an MCP client for the same Prysm deployment.
-
-```python
-from prysmai import PrysmClient
-
-prysm = PrysmClient(prysm_key="sk-prysm-...")
-mcp = prysm.mcp()
-
-tools = mcp.list_tools()
-config = mcp.connection_config()
-```
-
-### `PrysmClient.session(...)`
-
-Create a unified session that links proxy requests and governance activity.
-
-```python
-from prysmai import PrysmClient
-
-prysm = PrysmClient(prysm_key="sk-prysm-...")
-
-with prysm.session(
-    user_id="user_123",
-    governance_task="Review an agent run",
-    agent_type="codex",
-) as run:
-    client = run.openai()
-    response = client.chat.completions.create(
+with prysm_context(
+    user_id="user_42",
+    session_id="sess_checkout",
+    metadata={"tenant": "acme", "feature": "checkout"},
+):
+    client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "Reply with ok."}],
+        messages=[{"role": "user", "content": "Help me check out."}],
     )
 ```
 
-### `monitor(client, prysm_key, base_url, timeout)`
+### `PrysmSession`
 
-Alternative entry point for wrapping an existing OpenAI client.
+Use `PrysmSession` helpers when you need to record governance-side events
+explicitly:
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `client` | `OpenAI` or `AsyncOpenAI` | *required* | An existing OpenAI client instance |
-| `prysm_key` | `str` | `PRYSM_API_KEY` env var | Your Prysm API key |
-| `base_url` | `str` | `https://prysmai.io/api/v1` | Prysm proxy URL |
-| `timeout` | `float` | `120.0` | Request timeout in seconds |
+- `record_llm_call(...)`
+- `record_tool_call(...)`
+- `record_decision(...)`
+- `record_file_change(...)`
+- `record_delegation(...)`
+- `run_tool(...)`
+- `scan_code(...)`
 
-**Returns:** A new OpenAI client of the same type (sync or async) routed through Prysm.
+## What Appears In Prysm
 
-```python
-from openai import OpenAI
-from prysmai import monitor
+With the SDK wired correctly, Prysm can show:
 
-monitored = monitor(OpenAI(), prysm_key="sk-prysm-...")
+- model traces
+- latency, tokens, and cost
+- threat and policy findings
+- session events such as tool calls, decisions, and file changes
+- governance reports and reviewable evidence
+
+## Framework Integrations
+
+The SDK also includes integrations for:
+
+- LangGraph
+- CrewAI
+- Microsoft Agent Framework
+- LlamaIndex
+
+You can initialize these from the shared `PrysmClient` so they use the same
+auth and base URL model.
+
+## Configuration
+
+The SDK resolves connection settings from:
+
+- explicit arguments
+- then environment variables
+
+Environment variables:
+
+- `PRYSM_API_KEY`
+- `PRYSM_BASE_URL`
+
+Default base URL:
+
+```text
+https://prysmai.io/api/v1
 ```
 
-### `prysm_context` — Request Metadata
+## Local Development
 
-Attach metadata to every request for filtering and grouping in your dashboard. Tag requests with user IDs, session IDs, or any custom key-value pairs.
-
-```python
-from prysmai import prysm_context
-
-# Set globally — all subsequent requests include these
-prysm_context.set(
-    user_id="user_123",
-    session_id="sess_abc",
-    metadata={"env": "production", "version": "1.2.0"}
-)
-
-# Scoped — only applies within the block
-with prysm_context(user_id="user_456", metadata={"feature": "chat"}):
-    response = client.chat.completions.create(...)
-    # Tagged with user_456
-
-# Outside the block, reverts to user_123
-```
-
-| Method | Description |
-|--------|-------------|
-| `prysm_context.set(user_id, session_id, metadata)` | Set global context for all subsequent requests |
-| `prysm_context.get()` | Get the current context object |
-| `prysm_context.clear()` | Reset context to defaults |
-| `prysm_context(user_id, session_id, metadata)` | Use as a context manager for scoped metadata |
-
-Metadata is sent via custom HTTP headers (`X-Prysm-User-Id`, `X-Prysm-Session-Id`, `X-Prysm-Metadata`) and appears in the trace detail panel on your dashboard.
-
----
-
-## Streaming
-
-Streaming works exactly as you'd expect — no changes needed. The proxy captures Time to First Token (TTFT), total latency, and the full streamed content.
-
-```python
-stream = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "Write a haiku about AI"}],
-    stream=True,
-)
-
-for chunk in stream:
-    if chunk.choices[0].delta.content:
-        print(chunk.choices[0].delta.content, end="")
-```
-
----
-
-## Async Support
-
-Full async support with the same API:
-
-```python
-import asyncio
-from prysmai import PrysmClient
-
-async def main():
-    client = PrysmClient(prysm_key="sk-prysm-...").async_openai()
-
-    response = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "Hello async!"}],
-    )
-    print(response.choices[0].message.content)
-
-asyncio.run(main())
-```
-
----
-
-## Proxy Endpoints
-
-The Prysm proxy exposes three OpenAI-compatible endpoints. You can also use them directly via REST without the Python SDK.
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/chat/completions` | POST | Chat completions (GPT-4o, Claude, Llama, etc.) |
-| `/api/v1/completions` | POST | Text completions (legacy) |
-| `/api/v1/embeddings` | POST | Embedding generation (text-embedding-3-small, etc.) |
-| `/api/v1/health` | GET | Proxy health check |
-
-### Direct REST Usage (cURL)
-
-```bash
-curl -X POST https://prysmai.io/api/v1/chat/completions \
-  -H "Authorization: Bearer sk-prysm-your-key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-4o-mini",
-    "messages": [{"role": "user", "content": "Hello"}]
-  }'
-```
-
-### Custom Headers
-
-| Header | Description |
-|--------|-------------|
-| `X-Prysm-User-Id` | Tag the request with a user identifier |
-| `X-Prysm-Session-Id` | Tag the request with a session identifier |
-| `X-Prysm-Metadata` | JSON string of custom key-value pairs |
-
----
-
-## What Gets Captured
-
-Every request through the SDK is logged with:
-
-| Field | Description |
-|-------|-------------|
-| **Model** | Which model was called (gpt-4o, claude-sonnet-4-20250514, llama-3, etc.) |
-| **Provider** | Which provider handled the request (openai, anthropic, google, vllm, ollama, custom) |
-| **Latency** | Total request duration in milliseconds |
-| **TTFT** | Time to first token for streaming requests |
-| **Prompt tokens** | Input token count |
-| **Completion tokens** | Output token count |
-| **Cost** | Calculated cost based on model pricing (30+ models built-in, custom pricing supported) |
-| **Status** | `success`, `error`, or provider-specific error code |
-| **Request body** | Full messages array and parameters |
-| **Response body** | Complete model response |
-| **Tool calls** | Function/tool call names, arguments, and results (if present) |
-| **Logprobs** | Token log probabilities (if requested) |
-| **User ID** | From `prysm_context` or `X-Prysm-User-Id` header |
-| **Session ID** | From `prysm_context` or `X-Prysm-Session-Id` header |
-| **Custom metadata** | Any key-value pairs from `prysm_context` or `X-Prysm-Metadata` header |
-
----
-
-## Dashboard Features
-
-Once traces are flowing, your Prysm dashboard provides:
-
-**Overview** — Real-time metrics cards (total requests, average latency, error rate, total cost), request volume chart, latency distribution, cost accumulation, error rate over time, model usage breakdown, and a WebSocket-powered live trace feed.
-
-**Request Explorer** — Searchable, filterable table of all traces. Click any trace to see the full prompt, completion, token counts, latency breakdown, tool calls, logprobs, cost, and metadata in a detail panel.
-
-**API Keys** — Create, view, and revoke `sk-prysm-*` keys. Each key shows its prefix, creation date, and last used timestamp.
-
-**Settings** — Project configuration (provider, base URL, model, API key), team management (invite/remove members), alert configuration, custom model pricing, and usage tracking.
-
----
-
-## Alerting
-
-Configure alerts in the dashboard to get notified when metrics cross thresholds. Supported channels:
-
-| Channel | Configuration |
-|---------|--------------|
-| **Email** | Sends to any email address via Resend |
-| **Slack** | Webhook URL — posts to any Slack channel |
-| **Discord** | Webhook URL — posts to any Discord channel |
-| **Custom webhook** | Any HTTP endpoint — receives JSON payload |
-
-Supported metrics: `error_rate`, `latency_p50`, `latency_p95`, `latency_p99`, `request_count`, `total_cost`.
-
-Supported conditions: `>`, `>=`, `<`, `<=`, `=`.
-
----
-
-## Cost Tracking
-
-Prysm automatically calculates cost for 40+ models with built-in pricing:
-
-**OpenAI Models**
-
-| Model | Input (per 1M tokens) | Output (per 1M tokens) |
-|-------|----------------------|------------------------|
-| gpt-4o | $2.50 | $10.00 |
-| gpt-4o-mini | $0.15 | $0.60 |
-| gpt-4-turbo | $10.00 | $30.00 |
-| o1 | $15.00 | $60.00 |
-| o3-mini | $1.10 | $4.40 |
-| text-embedding-3-small | $0.02 | $0.00 |
-| text-embedding-3-large | $0.13 | $0.00 |
-
-**Anthropic Models**
-
-| Model | Input (per 1M tokens) | Output (per 1M tokens) |
-|-------|----------------------|------------------------|
-| claude-3-5-sonnet | $3.00 | $15.00 |
-| claude-3-5-haiku | $0.80 | $4.00 |
-| claude-3-opus | $15.00 | $75.00 |
-
-**Google Gemini Models**
-
-| Model | Input (per 1M tokens) | Output (per 1M tokens) |
-|-------|----------------------|------------------------|
-| gemini-2.5-pro | $1.25 | $10.00 |
-| gemini-2.5-flash | $0.30 | $2.50 |
-| gemini-2.5-flash-lite | $0.10 | $0.40 |
-| gemini-2.0-flash | $0.10 | $0.40 |
-| gemini-2.0-flash-lite | $0.075 | $0.30 |
-| gemini-1.5-pro | $1.25 | $5.00 |
-| gemini-1.5-flash | $0.075 | $0.30 |
-
-For models not in the built-in list (open-source, self-hosted, etc.), add custom pricing in **Settings > Pricing** with your own cost-per-token rates.
-
----
-
-## Security
-
-Prysm includes a built-in security layer that scans every LLM request in real time before forwarding it to the provider. **No SDK changes are required** — your existing integration is already protected.
-
-### What Gets Scanned
-
-| Engine | What It Detects | Action |
-|--------|----------------|--------|
-| **Injection Detector** | Prompt injection attacks (20+ patterns across 7 categories) | Flag or block |
-| **PII Detector** | Emails, phone numbers, SSNs, credit cards, API keys, IPs, private keys, DOBs | Mask, hash, or block |
-| **Content Policy** | Hate speech, violence, sexual content, self-harm, illegal activities | Flag or block |
-
-### Injection Detection Categories
-
-| Category | Example Patterns | Severity |
-|----------|-----------------|----------|
-| Role Manipulation | "ignore previous instructions", "you are now DAN" | High (8–9) |
-| Delimiter Injection | "---END SYSTEM---", "[INST]", markdown code fences | Medium (6–7) |
-| Context Confusion | "the real instructions are", "admin override" | High (7–8) |
-| Encoding Tricks | Base64 encoded instructions, hex-encoded payloads | Medium (6–7) |
-| Extraction Attempts | "repeat your system prompt", "show your instructions" | High (7–8) |
-| Jailbreak Phrases | "DAN mode", "developer mode", "no restrictions" | Critical (9–10) |
-| Multi-language Attacks | Language-switching evasion, mixed-script injection | Medium (5–6) |
-
-### PII Redaction Modes
-
-| Mode | Behavior | Example Output |
-|------|----------|----------------|
-| `none` | PII is detected and logged but not modified | `user@example.com` (unchanged) |
-| `mask` | Replaced with type-labeled placeholder | `[EMAIL_REDACTED]` |
-| `hash` | Replaced with SHA-256 hash | `[EMAIL:a1b2c3d4]` |
-| `block` | Entire request rejected with 403 | Request blocked |
-
-### Threat Scoring
-
-Every request receives a composite threat score from 0 to 100:
-
-| Score Range | Level | Behavior |
-|-------------|-------|----------|
-| 0–19 | Clean | No action |
-| 20–39 | Low | Logged, visible in dashboard |
-| 40–69 | Medium | Logged, triggers alerts if configured |
-| 70–100 | High | Logged, blocked if blocking is enabled |
-
-### Configuration
-
-Configure security per-organization via the Security Dashboard or Settings:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `injectionDetection` | `true` | Enable/disable prompt injection scanning |
-| `piiDetection` | `true` | Enable/disable PII detection |
-| `piiRedactionMode` | `none` | How to handle detected PII: `none`, `mask`, `hash`, or `block` |
-| `blockHighThreats` | `false` | Automatically block requests with threat score ≥ 70 |
-| `customKeywords` | `[]` | Custom keywords to flag in request content |
-
-> **Recommended setup:** Start with defaults (detection on, blocking off) to monitor your traffic. Once confident in detection accuracy, enable `blockHighThreats`. Use `mask` redaction for production workloads handling customer data.
-
----
-
-## Governance (v0.5.0)
-
-The governance layer monitors AI agent behavior in real time — detecting early stopping, tool undertriggering, and code security vulnerabilities.
-
-### Standalone Governance Session
-
-```python
-from prysmai import PrysmClient
-from prysmai.governance import GovernanceSession
-
-client = PrysmClient(prysm_key="sk-prysm-...")
-
-with GovernanceSession(client=client, task="Fix authentication bug", agent_type="claude_code") as gov:
-    # Report agent events as they happen
-    result = gov.check_behavior([
-        {"event_type": "llm_call", "data": {"model": "gpt-4o", "prompt_tokens": 500}},
-        {"event_type": "tool_call", "data": {"tool_name": "bash", "command": "grep -r 'auth'"}},
-        {"event_type": "llm_call", "data": {"model": "gpt-4o", "prompt_tokens": 800}},
-    ])
-
-    if result.has_flags:
-        print(f"Behavioral flags detected (max severity: {result.max_severity})")
-        for flag in result.flags:
-            print(f"  - {flag.detector}: severity {flag.severity}")
-
-    # Scan generated code for vulnerabilities
-    scan = gov.scan_code(
-        code="subprocess.call(user_input, shell=True)",
-        language="python",
-        file_path="app.py",
-    )
-    if not scan.is_clean:
-        print(f"Found {scan.vulnerability_count} vulnerabilities (threat score: {scan.threat_score})")
-
-# Session auto-ends, report generated
-```
-
-### Auto-Check Mode
-
-```python
-# Automatically check behavior every 5 events
-with GovernanceSession(client=client, task="Deploy pipeline", auto_check_interval=5) as gov:
-    for event in agent_event_stream:
-        result = gov.report_event(event["type"], event["data"])
-        if result and result.has_flags:
-            handle_flags(result.flags)
-```
-
-### LangGraph Integration
-
-```python
-from prysmai.integrations.langgraph import PrysmGraphMonitor
-
-# With governance enabled
-monitor = PrysmGraphMonitor(
-    api_key="sk-prysm-...",
-    governance=True,
-    governance_task="Research and summarize topic",
-)
-
-# Use as a LangGraph callback
-for chunk in graph.stream(inputs, config={"callbacks": [monitor]}):
-    process(chunk)
-
-# End governance and get report
-report = monitor.end_governance(outcome="completed")
-print(f"Behavior score: {report.behavior_score}")
-print(f"Nodes executed: {monitor.graph_summary['nodes_executed']}")
-print(f"State transitions: {monitor.state_transitions}")
-
-monitor.flush()  # Send remaining telemetry
-```
-
-### CrewAI Integration
-
-```python
-from prysmai.integrations.crewai import PrysmCrewMonitor
-
-monitor = PrysmCrewMonitor(
-    prysm_key="sk-prysm-...",
-    governance=True,
-    governance_task="Customer support workflow",
-)
-monitor.monitor_crew(crew)
-crew.kickoff()
-
-# Access governance report after completion
-if monitor.governance_report:
-    print(f"Behavior score: {monitor.governance_report.behavior_score}")
-```
-
-### Governance API Reference
-
-| Class | Method | Description |
-|-------|--------|-------------|
-| `GovernanceSession` | `start()` | Begin a governance session |
-| | `check_behavior(events)` | Report events and get behavioral feedback |
-| | `scan_code(code, language)` | Scan code for security vulnerabilities |
-| | `report_event(type, data)` | Report a single event (auto-checks if interval set) |
-| | `end(outcome)` | End session and get final report |
-| `PrysmGraphMonitor` | `start_governance(task)` | Explicitly start governance |
-| | `end_governance(outcome)` | End governance and get report |
-| | `graph_summary` | Node count, execution order, tool mapping |
-| | `state_transitions` | List of node-to-node transitions |
-| | `node_timings` | Duration per node in milliseconds |
-
----
-
-## Self-Hosted Proxy
-
-If you're running the Prysm proxy on your own infrastructure:
+For local Prysm development:
 
 ```python
 from prysmai import PrysmClient
 
-client = PrysmClient(
+prysm = PrysmClient(
     prysm_key="sk-prysm-...",
     base_url="http://localhost:3000/api/v1",
-).openai()
+)
 ```
 
----
+The MCP server for that same deployment will resolve to:
 
-## Error Handling
-
-The SDK preserves OpenAI's error types. If the upstream API returns an error, you get the same exception you'd get without Prysm:
-
-```python
-import openai
-
-try:
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "test"}],
-    )
-except openai.AuthenticationError:
-    print("Invalid API key")
-except openai.RateLimitError:
-    print("Rate limited")
-except openai.APIError as e:
-    print(f"API error: {e}")
+```text
+http://localhost:3000/api/mcp
 ```
 
-Prysm-specific errors:
+## More Documentation
 
-| HTTP Status | Meaning |
-|-------------|---------|
-| `401` | Invalid or missing Prysm API key |
-| `403` | Request blocked by security policy (high threat score or PII block mode) |
-| `429` | Usage limit exceeded (free tier: 10K requests/month) |
-| `502` | Upstream provider error (forwarded from OpenAI/Anthropic/etc.) |
-| `503` | Proxy temporarily unavailable |
+- [Developer Guide](docs/DEVELOPER_GUIDE.md)
+- [SDK control plane note](docs/SDK_CONTROL_PLANE.md)
+- [PyPI package](https://pypi.org/project/prysmai/)
 
----
+## Status
 
-## Environment Variables
+The SDK is still early, but the core product direction is now:
 
-| Variable | Description |
-|----------|-------------|
-| `PRYSM_API_KEY` | Your Prysm API key (used if `prysm_key` is not passed) |
-| `PRYSM_BASE_URL` | Custom proxy URL (used if `base_url` is not passed) |
-
----
-
-## Development
-
-```bash
-git clone https://github.com/osasisorae/prysmai-python.git
-cd prysmai-python
-
-# Install with dev dependencies
-pip install -e ".[dev]"
-
-# Run tests
-pytest tests/ -v
-```
-
-The SDK includes 140+ tests covering client initialization, environment variable fallbacks, sync/async client creation, `monitor()` behavior, context management (global, scoped, nested), header injection, full integration tests with mock HTTP server, error propagation, governance session lifecycle, behavioral detection, code scanning, LangGraph node tracking, and framework integration governance.
-
----
-
-## Links
-
-- **Website:** [prysmai.io](https://prysmai.io)
-- **Documentation:** [prysmai.io/docs](https://prysmai.io/docs)
-- **PyPI:** [pypi.org/project/prysmai](https://pypi.org/project/prysmai/)
-- **GitHub:** [github.com/osasisorae/prysmai-python](https://github.com/osasisorae/prysmai-python)
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE) for details.
-
----
-
-**Built by [Prysm AI](https://prysmai.io)** — See inside your AI.
+- one control plane
+- two integration paths
+- shared evidence and governance outcomes
