@@ -6,6 +6,9 @@ These examples mirror the three main ways to use PrysmAI:
 2. **MCP path** for agent runtimes
 3. **Unified session path** for correlated runs across requests and governance evidence
 
+They also include framework-oriented examples for developers who want Prysm to
+plug into an orchestration layer instead of building telemetry wiring by hand.
+
 ## Setup
 
 Set your Prysm credentials:
@@ -21,6 +24,8 @@ Then run any example:
 python examples/proxy_chat.py
 python examples/mcp_agent_runtime.py
 python examples/unified_session.py
+python examples/langgraph_monitor.py
+python examples/agent_framework_monitor.py
 ```
 
 ## Files
@@ -36,3 +41,11 @@ python examples/unified_session.py
 - `unified_session.py`
   - Best example of the current Prysm product shape
   - Correlates model traffic, decisions, tools, and file changes under one run
+
+- `langgraph_monitor.py`
+  - LangGraph callback example
+  - Starts governance, wires Prysm as a graph callback, and closes cleanly
+
+- `agent_framework_monitor.py`
+  - Agent Framework middleware example
+  - Shows where Prysm wraps agent execution, tool activity, and chat-model calls

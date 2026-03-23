@@ -242,6 +242,71 @@ The SDK also includes integrations for:
 You can initialize these from the shared `PrysmClient` so they use the same
 auth and base URL model.
 
+### LangGraph
+
+```python
+from prysmai import PrysmClient
+
+prysm = PrysmClient(prysm_key="sk-prysm-...")
+monitor = prysm.langgraph_monitor(
+    user_id="user_123",
+    metadata={"framework": "langgraph"},
+    governance=True,
+)
+
+monitor.start_governance(
+    task="Run a support workflow",
+    available_tools=["search_docs"],
+)
+
+for chunk in graph.stream(
+    {"question": "Handle a duplicate charge request"},
+    config={"callbacks": [monitor]},
+):
+    ...
+
+report = monitor.end_governance()
+monitor.close()
+```
+
+### Agent Framework
+
+```python
+from prysmai import PrysmClient
+
+prysm = PrysmClient(prysm_key="sk-prysm-...")
+monitor = prysm.agent_framework_monitor(
+    user_id="user_123",
+    metadata={"framework": "agent_framework"},
+    governance=True,
+)
+
+agent = client.as_agent(
+    name="SupportBot",
+    middleware=monitor.middleware(),
+)
+```
+
+### CrewAI and LlamaIndex
+
+The SDK also includes:
+
+- `prysm.crewai_monitor(...)` for CrewAI event-bus telemetry
+- `prysm.llamaindex_handler(...)` for LlamaIndex callback telemetry
+
+See the framework examples and developer guide for setup and optional
+dependencies.
+
+### Notes
+
+- LangGraph, Agent Framework, CrewAI, and LlamaIndex paths have all been
+  exercised against a live local Prysm server, not just mock tests.
+- Framework integrations primarily emit telemetry and governance evidence into
+  the same control plane used by the proxy and MCP paths.
+- Example files:
+  - `examples/langgraph_monitor.py`
+  - `examples/agent_framework_monitor.py`
+
 ## Configuration
 
 The SDK resolves connection settings from:

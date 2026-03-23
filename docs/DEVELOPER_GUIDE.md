@@ -288,6 +288,83 @@ model in mind:
 - session events where appropriate
 - shared evidence in Prysm
 
+### LangGraph
+
+Use `prysm.langgraph_monitor(...)` when you want LangGraph callback telemetry
+and optional governance reporting without inventing your own transport.
+
+```python
+from prysmai import PrysmClient
+
+prysm = PrysmClient()
+monitor = prysm.langgraph_monitor(
+    user_id="user_123",
+    metadata={"framework": "langgraph"},
+    governance=True,
+)
+
+monitor.start_governance(
+    task="Run a customer support graph safely",
+    available_tools=["search_docs"],
+)
+```
+
+Use this monitor as a callback in your graph execution config, then call
+`monitor.end_governance()` and `monitor.close()` when the run finishes.
+
+### Agent Framework
+
+Use `prysm.agent_framework_monitor(...)` when you want Prysm to observe agent
+middleware, tool calls, and chat-model activity in Microsoft Agent Framework.
+
+```python
+from prysmai import PrysmClient
+
+prysm = PrysmClient()
+monitor = prysm.agent_framework_monitor(
+    user_id="user_123",
+    metadata={"framework": "agent_framework"},
+    governance=True,
+)
+```
+
+Register `monitor.middleware()` on the agent or run, then flush or close the
+monitor after execution.
+
+### CrewAI
+
+Use `prysm.crewai_monitor(...)` when you want CrewAI event-bus telemetry to
+land in the same Prysm session and governance surface.
+
+The CrewAI integration is best when:
+
+- you want crew, task, and tool telemetry automatically
+- you want delegation and coordination evidence in Prysm
+- you want governance reporting at the crew level
+
+### LlamaIndex
+
+Use `prysm.llamaindex_handler(...)` when you want callback-based telemetry from
+query engines, workflows, or span-based execution in LlamaIndex.
+
+This is the right path when:
+
+- your app already uses LlamaIndex callbacks
+- you want traces and span metadata without rebuilding the integration layer
+
+### Live Verification Status
+
+The following framework paths have been exercised against a live local Prysm
+server:
+
+- LangGraph
+- Agent Framework
+- CrewAI
+- LlamaIndex
+
+That matters because these integrations are no longer only “unit-test
+plausible”; they have been run against the real control plane.
+
 ## Local Testing
 
 If Prysm is running locally:
@@ -339,3 +416,4 @@ inside Prysm.
 
 - [README](../README.md)
 - [SDK control plane note](./SDK_CONTROL_PLANE.md)
+- [Examples](../examples/README.md)
