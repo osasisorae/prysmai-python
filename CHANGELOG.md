@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.0 (2026-03-23)
+
+### Features
+
+- **Control-plane docs rewrite** — README and developer docs now present Prysm as one control plane with two first-class SDK surfaces: proxy and MCP.
+- **Neutral `llm()` client alias** — `PrysmClient.llm()` and `PrysmSession.llm()` are now the preferred names, while `openai()` remains as a backward-compatible alias.
+- **Unified session helpers** — `PrysmSession` now exposes structured helpers for LLM calls, tool calls, decisions, file changes, and delegation events.
+- **Framework examples** — Added explicit LangGraph and Microsoft Agent Framework examples, plus clearer guidance for CrewAI and LlamaIndex.
+
+### Verification
+
+- Proxy, MCP, unified session, LangGraph, Agent Framework, CrewAI, and LlamaIndex paths were exercised against a live local Prysm server during this release cycle.
+
 ## 0.5.0 (2026-03-08)
 
 ### Features — Governance Layer
