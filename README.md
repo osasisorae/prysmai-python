@@ -278,6 +278,7 @@ http://localhost:3000/api/mcp
 
 - [Developer Guide](docs/DEVELOPER_GUIDE.md)
 - [SDK control plane note](docs/SDK_CONTROL_PLANE.md)
+- [Examples](examples/README.md)
 - [PyPI package](https://pypi.org/project/prysmai/)
 
 ## Status
