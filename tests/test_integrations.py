@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 """
 Tests for Prysm AI Framework Integrations.
 
@@ -458,7 +460,7 @@ class TestPrysmSpanHandler:
                         headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
                     )
                 except Exception:
-                    pass
+                    logger.warning("Suppressed exception", exc_info=True)
 
             def close(self):
                 self.flush()
