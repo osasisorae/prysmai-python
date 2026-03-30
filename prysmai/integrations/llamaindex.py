@@ -200,7 +200,7 @@ class PrysmSpanHandler(BaseCallbackHandler):
         try:
             self.flush()
         except Exception:
-            pass
+            logger.warning("Suppressed exception", exc_info=True)
 
 
 # ─── Payload Extraction Helpers ──────────────────────────────────
