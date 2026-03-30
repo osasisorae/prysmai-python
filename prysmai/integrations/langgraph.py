@@ -249,7 +249,7 @@ class PrysmGraphMonitor(BaseCallbackHandler):
                 try:
                     self._gov_session.check_behavior(self._gov_event_buffer)
                 except Exception:
-                    pass
+                    logger.warning("Suppressed exception", exc_info=True)
                 self._gov_event_buffer.clear()
 
             self._governance_report = self._gov_session.end(
@@ -808,7 +808,7 @@ class PrysmGraphMonitor(BaseCallbackHandler):
             try:
                 self.end_governance(outcome="partial")
             except Exception:
-                pass
+                logger.warning("Suppressed exception", exc_info=True)
         self._client.close()
 
     def reset(self) -> None:
@@ -824,7 +824,7 @@ class PrysmGraphMonitor(BaseCallbackHandler):
         try:
             self.flush()
         except Exception:
-            pass
+            logger.warning("Suppressed exception", exc_info=True)
 
 
 # ─── Helpers ─────────────────────────────────────────────────────
