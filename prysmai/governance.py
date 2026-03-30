@@ -916,7 +916,7 @@ class GovernanceSession:
         try:
             self._transport.close()
         except Exception:
-            pass
+            logger.warning("Suppressed exception", exc_info=True)
 
     def __repr__(self) -> str:
         status = "active" if self._active else "inactive"
