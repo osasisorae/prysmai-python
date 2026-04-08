@@ -33,7 +33,7 @@ class _PrysmTransport(httpx.BaseTransport):
     Wraps an httpx transport to inject Prysm context headers
     (X-Prysm-User-Id, X-Prysm-Session-Id, X-Prysm-Metadata)
     and optional dynamic upstream key / forward headers
-    into every outgoing request.
+    into every outgoing request, and captures Prysm response headers.
     """
 
     def __init__(
@@ -45,6 +45,7 @@ class _PrysmTransport(httpx.BaseTransport):
         self._wrapped = wrapped
         self._upstream_api_key = upstream_api_key
         self._forward_headers = forward_headers
+        self.last_prysm_headers: Dict[str, str] = {}
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         ctx = _prysm_ctx.get()
@@ -52,15 +53,18 @@ class _PrysmTransport(httpx.BaseTransport):
         for key, value in headers.items():
             request.headers[key] = value
 
-        # Inject dynamic upstream key
         if self._upstream_api_key:
             request.headers["X-Prysm-Upstream-Key"] = self._upstream_api_key
 
-        # Inject forward headers as JSON
         if self._forward_headers:
             request.headers["X-Prysm-Forward-Headers"] = json.dumps(self._forward_headers)
 
-        return self._wrapped.handle_request(request)
+        response = self._wrapped.handle_request(request)
+        self.last_prysm_headers = {
+            k: v for k, v in response.headers.items()
+            if k.lower().startswith("x-prysm-")
+        }
+        return response
 
 
 class _PrysmAsyncTransport(httpx.AsyncBaseTransport):
@@ -75,6 +79,7 @@ class _PrysmAsyncTransport(httpx.AsyncBaseTransport):
         self._wrapped = wrapped
         self._upstream_api_key = upstream_api_key
         self._forward_headers = forward_headers
+        self.last_prysm_headers: Dict[str, str] = {}
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         ctx = _prysm_ctx.get()
@@ -82,15 +87,18 @@ class _PrysmAsyncTransport(httpx.AsyncBaseTransport):
         for key, value in headers.items():
             request.headers[key] = value
 
-        # Inject dynamic upstream key
         if self._upstream_api_key:
             request.headers["X-Prysm-Upstream-Key"] = self._upstream_api_key
 
-        # Inject forward headers as JSON
         if self._forward_headers:
             request.headers["X-Prysm-Forward-Headers"] = json.dumps(self._forward_headers)
 
-        return await self._wrapped.handle_async_request(request)
+        response = await self._wrapped.handle_async_request(request)
+        self.last_prysm_headers = {
+            k: v for k, v in response.headers.items()
+            if k.lower().startswith("x-prysm-")
+        }
+        return response
 
 
 # ─── PrysmClient: the monitored OpenAI client ───
@@ -136,15 +144,17 @@ class PrysmClient:
         Create a sync OpenAI-compatible client routed through Prysm.
 
         Any extra kwargs are passed to openai.OpenAI().
+        Access last response headers via client._transport.last_prysm_headers
+        or use prysm.last_trace_id / prysm.last_threat_level after each call.
         """
-        transport = _PrysmTransport(
+        self._sync_transport = _PrysmTransport(
             httpx.HTTPTransport(retries=2),
             upstream_api_key=self.upstream_api_key,
             forward_headers=self.forward_headers,
         )
 
         http_client = httpx.Client(
-            transport=transport,
+            transport=self._sync_transport,
             timeout=self.timeout,
         )
 
@@ -154,6 +164,31 @@ class PrysmClient:
             http_client=http_client,
             **kwargs,
         )
+
+    @property
+    def last_trace_id(self) -> Optional[str]:
+        """Trace ID from the most recent proxied request."""
+        t = getattr(self, "_sync_transport", None) or getattr(self, "_async_transport", None)
+        if t:
+            return t.last_prysm_headers.get("x-prysm-trace-id")
+        return None
+
+    @property
+    def last_threat_level(self) -> Optional[str]:
+        """Threat level from the most recent proxied request."""
+        t = getattr(self, "_sync_transport", None) or getattr(self, "_async_transport", None)
+        if t:
+            return t.last_prysm_headers.get("x-prysm-threat-level")
+        return None
+
+    @property
+    def last_threat_score(self) -> Optional[float]:
+        """Threat score from the most recent proxied request."""
+        t = getattr(self, "_sync_transport", None) or getattr(self, "_async_transport", None)
+        if t:
+            val = t.last_prysm_headers.get("x-prysm-threat-score")
+            return float(val) if val else None
+        return None
 
     def openai(self, **kwargs: Any) -> openai.OpenAI:
         """
@@ -170,14 +205,14 @@ class PrysmClient:
 
         Any extra kwargs are passed to openai.AsyncOpenAI().
         """
-        transport = _PrysmAsyncTransport(
+        self._async_transport = _PrysmAsyncTransport(
             httpx.AsyncHTTPTransport(retries=2),
             upstream_api_key=self.upstream_api_key,
             forward_headers=self.forward_headers,
         )
 
         http_client = httpx.AsyncClient(
-            transport=transport,
+            transport=self._async_transport,
             timeout=self.timeout,
         )
 

@@ -78,9 +78,43 @@ class BaseDetector(ABC):
     """Abstract base class for governance detectors."""
 
     name: str = "base"
+    _prysm_key: Optional[str] = None
+    _base_url: Optional[str] = None
+
+    def configure_reporting(self, prysm_key: str, base_url: str) -> None:
+        """Enable reporting detections to the PrysmAI backend."""
+        self._prysm_key = prysm_key
+        self._base_url = base_url.rstrip("/")
+
+    def _report_to_backend(self, detection: "Detection") -> None:
+        """POST a detection to the backend threat events endpoint (best-effort)."""
+        if not self._prysm_key or not self._base_url:
+            return
+        try:
+            import httpx as _httpx
+            url = self._base_url
+            for suffix in ["/api/v1", "/v1"]:
+                if url.endswith(suffix):
+                    url = url[: -len(suffix)]
+                    break
+            _httpx.post(
+                f"{url}/threat-events",
+                headers={"Authorization": f"Bearer {self._prysm_key}", "Content-Type": "application/json"},
+                json={
+                    "detector": detection.detector,
+                    "severity": detection.severity,
+                    "category": detection.category,
+                    "message": detection.message,
+                    "evidence": detection.evidence,
+                    "timestamp": detection.timestamp,
+                },
+                timeout=5,
+            )
+        except Exception:
+            pass  # Never block the agent
 
     @abstractmethod
-    def process_event(self, event: Dict[str, Any]) -> List[Detection]:
+    def process_event(self, event: Dict[str, Any]) -> List["Detection"]:
         """
         Process a single event and return any detections.
 
@@ -100,6 +134,13 @@ class BaseDetector(ABC):
     def reset(self) -> None:
         """Reset detector state. Override in subclasses."""
         pass
+
+    def _process_and_report(self, event: Dict[str, Any]) -> List["Detection"]:
+        """Call process_event and report any detections to the backend."""
+        detections = self.process_event(event)
+        for d in detections:
+            self._report_to_backend(d)
+        return detections
 
 
 # ─── 1. Financial Anomaly Detector ───────────────────────────────────

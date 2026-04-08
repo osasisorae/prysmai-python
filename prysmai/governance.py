@@ -220,31 +220,18 @@ class SessionReport:
 class _McpTransport:
     """
     Low-level transport for calling the Prysm MCP endpoint.
-
-    Handles:
-    - JSON-RPC request construction
-    - SSE response parsing
-    - Authentication via Bearer token
-    - Request ID auto-increment
+    Falls back to the REST API if the MCP endpoint returns 404.
     """
 
-    def __init__(
-        self,
-        base_url: str,
-        api_key: str,
-        timeout: float = 60.0,
-    ):
+    def __init__(self, base_url: str, api_key: str, timeout: float = 60.0):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._request_id = 0
         self._client = httpx.Client(timeout=timeout)
+        self._use_rest: Optional[bool] = None  # None = not yet probed
 
     @property
     def mcp_url(self) -> str:
-        """Derive the MCP endpoint URL from the proxy base URL."""
-        # The base_url is typically https://prysmai.io/api/v1 (the proxy endpoint)
-        # The MCP endpoint is at /api/mcp on the same host
-        # Strip /api/v1 or similar suffix and append /api/mcp
         url = self._base_url
         for suffix in ["/api/v1", "/v1", "/api"]:
             if url.endswith(suffix):
@@ -252,155 +239,101 @@ class _McpTransport:
                 break
         return f"{url}/api/mcp"
 
+    @property
+    def rest_base(self) -> str:
+        url = self._base_url
+        for suffix in ["/api/v1", "/v1"]:
+            if url.endswith(suffix):
+                url = url[: -len(suffix)]
+                break
+        return url
+
+    def _rest_headers(self) -> Dict[str, str]:
+        return {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
+
     def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Call an MCP tool and return the parsed result.
+        # Probe once
+        if self._use_rest is None:
+            try:
+                r = self._client.post(self.mcp_url, json={"jsonrpc": "2.0", "id": 0, "method": "tools/list", "params": {}},
+                                      headers={"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json", "Accept": "application/json, text/event-stream"})
+                self._use_rest = r.status_code == 404
+            except Exception:
+                self._use_rest = True
 
-        Args:
-            tool_name: Name of the MCP tool (e.g., "prysm_session_start")
-            arguments: Tool arguments as a dictionary
+        if self._use_rest:
+            return self._rest_call(tool_name, arguments)
+        return self._mcp_call(tool_name, arguments)
 
-        Returns:
-            Parsed tool result as a dictionary
-
-        Raises:
-            GovernanceError: If the call fails
-        """
+    def _mcp_call(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         self._request_id += 1
-        payload = {
-            "jsonrpc": "2.0",
-            "id": self._request_id,
-            "method": "tools/call",
-            "params": {
-                "name": tool_name,
-                "arguments": arguments,
-            },
-        }
-
+        payload = {"jsonrpc": "2.0", "id": self._request_id, "method": "tools/call",
+                   "params": {"name": tool_name, "arguments": arguments}}
         try:
-            response = self._client.post(
-                self.mcp_url,
-                json=payload,
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json, text/event-stream",
-                },
-            )
+            response = self._client.post(self.mcp_url, json=payload,
+                headers={"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json", "Accept": "application/json, text/event-stream"})
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
-            raise GovernanceError(
-                f"MCP request failed with status {e.response.status_code}: {e.response.text[:500]}"
-            )
+            raise GovernanceError(f"MCP request failed with status {e.response.status_code}: {e.response.text[:500]}")
         except httpx.RequestError as e:
             raise GovernanceError(f"MCP request failed: {e}")
-
         mcp_result = _parse_sse_response(response.text)
         tool_result = _extract_tool_result(mcp_result)
-
-        # Check for tool-level errors
         if mcp_result.get("isError"):
-            error_msg = tool_result.get("error", "Unknown tool error")
-            raise GovernanceError(f"Tool {tool_name} failed: {error_msg}")
-
+            raise GovernanceError(f"Tool {tool_name} failed: {tool_result.get('error', 'Unknown')}")
         return tool_result
 
-    def list_tools(self) -> List[Dict[str, Any]]:
-        """List available MCP tools."""
-        self._request_id += 1
-        payload = {
-            "jsonrpc": "2.0",
-            "id": self._request_id,
-            "method": "tools/list",
-            "params": {},
-        }
-
+    def _rest_call(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Map MCP tool calls to REST endpoints on prysmai-agent."""
         try:
-            response = self._client.post(
-                self.mcp_url,
-                json=payload,
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json, text/event-stream",
-                },
-            )
-            response.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            raise GovernanceError(
-                f"MCP request failed with status {e.response.status_code}: {e.response.text[:500]}"
-            )
-        except httpx.RequestError as e:
-            raise GovernanceError(f"MCP request failed: {e}")
+            if tool_name == "prysm_session_start":
+                r = self._client.post(f"{self.rest_base}/governance/sessions",
+                    headers=self._rest_headers(), json=arguments)
+                r.raise_for_status()
+                return r.json()
 
+            elif tool_name == "prysm_session_end":
+                session_id = arguments.get("session_id", "")
+                r = self._client.patch(f"{self.rest_base}/governance/sessions/{session_id}",
+                    headers=self._rest_headers(), json=arguments)
+                r.raise_for_status()
+                return r.json()
+
+            elif tool_name == "prysm_check_behavior":
+                session_id = arguments.get("session_id", "")
+                r = self._client.post(f"{self.rest_base}/governance/sessions/{session_id}/events",
+                    headers=self._rest_headers(), json={"events": arguments.get("events", [])})
+                r.raise_for_status()
+                return r.json()
+
+            elif tool_name == "prysm_scan_code":
+                r = self._client.post(f"{self.rest_base}/governance/scan",
+                    headers=self._rest_headers(), json=arguments)
+                r.raise_for_status()
+                return r.json()
+
+            else:
+                raise GovernanceError(f"Unknown tool: {tool_name}")
+        except httpx.HTTPStatusError as e:
+            raise GovernanceError(f"REST call failed {e.response.status_code}: {e.response.text[:500]}")
+        except httpx.RequestError as e:
+            raise GovernanceError(f"REST call failed: {e}")
+
+    def list_tools(self) -> List[Dict[str, Any]]:
+        if self._use_rest:
+            return []
+        self._request_id += 1
+        payload = {"jsonrpc": "2.0", "id": self._request_id, "method": "tools/list", "params": {}}
+        try:
+            response = self._client.post(self.mcp_url, json=payload,
+                headers={"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json", "Accept": "application/json, text/event-stream"})
+            response.raise_for_status()
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise GovernanceError(f"MCP request failed: {e}")
         result = _parse_sse_response(response.text)
         return result.get("tools", [])
 
-    def list_resources(self) -> List[Dict[str, Any]]:
-        """List available MCP resources."""
-        self._request_id += 1
-        payload = {
-            "jsonrpc": "2.0",
-            "id": self._request_id,
-            "method": "resources/list",
-            "params": {},
-        }
-
-        try:
-            response = self._client.post(
-                self.mcp_url,
-                json=payload,
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json, text/event-stream",
-                },
-            )
-            response.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            raise GovernanceError(
-                f"MCP request failed with status {e.response.status_code}: {e.response.text[:500]}"
-            )
-        except httpx.RequestError as e:
-            raise GovernanceError(f"MCP request failed: {e}")
-
-        result = _parse_sse_response(response.text)
-        return result.get("resources", [])
-
-    def read_resource(self, uri: str) -> Dict[str, Any]:
-        """Read an MCP resource by URI."""
-        self._request_id += 1
-        payload = {
-            "jsonrpc": "2.0",
-            "id": self._request_id,
-            "method": "resources/read",
-            "params": {
-                "uri": uri,
-            },
-        }
-
-        try:
-            response = self._client.post(
-                self.mcp_url,
-                json=payload,
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json, text/event-stream",
-                },
-            )
-            response.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            raise GovernanceError(
-                f"MCP request failed with status {e.response.status_code}: {e.response.text[:500]}"
-            )
-        except httpx.RequestError as e:
-            raise GovernanceError(f"MCP request failed: {e}")
-
-        return _parse_sse_response(response.text)
-
     def close(self) -> None:
-        """Close the underlying HTTP client."""
         self._client.close()
 
 
@@ -490,17 +423,9 @@ class GovernanceSession:
     def attach_detector(self, detector: Any) -> "GovernanceSession":
         """
         Attach a behavioral detector to this session.
-
-        Detectors process events locally (client-side) before events are
-        sent to the server. They can detect financial anomalies, resource
-        access violations, loops, and multi-agent coordination issues.
-
-        Args:
-            detector: A BaseDetector instance (e.g., FinancialAnomalyDetector).
-
-        Returns:
-            self (for chaining).
+        Automatically configures the detector to report findings to the backend.
         """
+        detector.configure_reporting(self._api_key, self._base_url)
         self._detectors.append(detector)
         logger.info(f"Attached detector: {getattr(detector, 'name', type(detector).__name__)}")
         return self
@@ -534,7 +459,7 @@ class GovernanceSession:
         for event in events:
             for detector in self._detectors:
                 try:
-                    detections = detector.process_event(event)
+                    detections = detector._process_and_report(event)
                     all_detections.extend(detections)
                     self._detections.extend(detections)
                 except Exception as e:
@@ -924,3 +849,154 @@ class GovernanceSession:
             f"GovernanceSession(session_id={self._session_id!r}, "
             f"status={status}, agent_type={self._agent_type!r})"
         )
+
+
+# ─── AsyncGovernanceSession ─────────────────────────────────────────
+
+
+class AsyncGovernanceSession:
+    """
+    Async version of GovernanceSession for use with async agent frameworks.
+
+    Usage:
+        async with AsyncGovernanceSession(client, task="...", agent_type="langgraph") as gov:
+            await gov.check_behavior([...])
+            await gov.scan_code(code="...", language="python")
+    """
+
+    def __init__(
+        self,
+        client: Any = None,
+        task: str = "",
+        agent_type: str = "custom",
+        available_tools: Optional[List[str]] = None,
+        context: Optional[Dict[str, Any]] = None,
+        prysm_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        timeout: float = 60.0,
+        auto_check_interval: Optional[int] = None,
+    ):
+        resolved = resolve_prysm_connection(client=client, prysm_key=prysm_key, base_url=base_url)
+        self._api_key = resolved.prysm_key
+        self._base_url = resolved.base_url
+        self._task = task
+        self._agent_type = agent_type
+        self._available_tools = available_tools
+        self._context = context
+        self._timeout = timeout
+        self._auto_check_interval = auto_check_interval
+        self._session_id: Optional[str] = None
+        self._active = False
+        self._event_buffer: List[Dict[str, Any]] = []
+        self._detectors: List[Any] = []
+        self._detections: List[Any] = []
+        self._flags: List[BehavioralFlag] = []
+
+    def _headers(self) -> Dict[str, str]:
+        return {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
+
+    def _rest_base(self) -> str:
+        url = self._base_url.rstrip("/")
+        for suffix in ["/api/v1", "/v1"]:
+            if url.endswith(suffix):
+                url = url[: -len(suffix)]
+                break
+        return url
+
+    async def _call(self, method: str, path: str, **kwargs: Any) -> Dict[str, Any]:
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=self._timeout) as http:
+            r = await http.request(method, f"{self._rest_base()}{path}", headers=self._headers(), **kwargs)
+            if r.status_code >= 400:
+                raise GovernanceError(f"REST {method} {path} failed {r.status_code}: {r.text[:300]}")
+            return r.json()
+
+    def attach_detector(self, detector: Any) -> "AsyncGovernanceSession":
+        detector.configure_reporting(self._api_key, self._base_url)
+        self._detectors.append(detector)
+        return self
+
+    async def start(self) -> Dict[str, Any]:
+        args: Dict[str, Any] = {"task_instructions": self._task, "agent_type": self._agent_type}
+        if self._available_tools:
+            args["available_tools"] = self._available_tools
+        if self._context:
+            args["context"] = self._context
+        result = await self._call("POST", "/governance/sessions", json=args)
+        self._session_id = result.get("session_id")
+        self._active = True
+        return result
+
+    async def end(self, outcome: str = "completed", output_summary: Optional[str] = None) -> SessionReport:
+        if not self._active:
+            raise GovernanceError("No active session to end.")
+        if self._event_buffer:
+            try:
+                await self.check_behavior(self._event_buffer)
+            except GovernanceError:
+                pass
+            self._event_buffer.clear()
+        args: Dict[str, Any] = {"session_id": self._session_id, "outcome": outcome}
+        if output_summary:
+            args["output_summary"] = output_summary
+        result = await self._call("PATCH", f"/governance/sessions/{self._session_id}", json=args)
+        self._active = False
+        report_data = result.get("report", {})
+        return SessionReport(
+            session_id=result.get("session_id", self._session_id or ""),
+            outcome=result.get("outcome", outcome),
+            behavior_score=report_data.get("behavior_score"),
+            detectors=report_data.get("detectors", []) + [d.get_summary() for d in self._detectors],
+            summary=report_data.get("summary"),
+            recommendations=report_data.get("recommendations", []),
+            violations=result.get("violations", []),
+            raw=result,
+        )
+
+    async def check_behavior(self, events: List[Dict[str, Any]]) -> CheckResult:
+        if not self._active:
+            raise SessionNotActiveError("Session is not active.")
+        # Run local detectors
+        for event in events:
+            for detector in self._detectors:
+                try:
+                    detections = detector._process_and_report(event)
+                    self._detections.extend(detections)
+                except Exception:
+                    pass
+        result = await self._call("POST", f"/governance/sessions/{self._session_id}/events",
+                                  json={"events": events})
+        flags = [BehavioralFlag(detector=f.get("detector", ""), severity=f.get("severity", 0),
+                                evidence=f.get("evidence", [])) for f in result.get("flags", [])]
+        self._flags.extend(flags)
+        return CheckResult(events_ingested=result.get("events_ingested", 0), flags=flags,
+                           violations=result.get("violations", []),
+                           recommendations=result.get("recommendations", []), raw=result)
+
+    async def scan_code(self, code: str, language: str, file_path: Optional[str] = None) -> ScanResult:
+        if not self._active:
+            raise SessionNotActiveError("Session is not active.")
+        args: Dict[str, Any] = {"session_id": self._session_id, "code": code, "language": language}
+        if file_path:
+            args["file_path"] = file_path
+        result = await self._call("POST", "/governance/scan", json=args)
+        vulns = [Vulnerability(type=v.get("type", ""), severity=v.get("severity", "info"),
+                               description=v.get("description", "")) for v in result.get("vulnerabilities", [])]
+        return ScanResult(language=language, file_path=file_path,
+                          vulnerability_count=result.get("vulnerability_count", 0),
+                          max_severity=result.get("max_severity", "info"),
+                          threat_score=result.get("threat_score", 0),
+                          vulnerabilities=vulns, recommendations=result.get("recommendations", []),
+                          raw=result)
+
+    async def __aenter__(self) -> "AsyncGovernanceSession":
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        if self._active:
+            outcome = "completed" if exc_type is None else "failed"
+            try:
+                await self.end(outcome=outcome)
+            except GovernanceError as e:
+                logger.warning(f"Failed to end async governance session: {e}")

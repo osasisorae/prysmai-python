@@ -45,7 +45,7 @@ traffic and governance evidence:
 from prysmai.client import monitor, PrysmClient
 from prysmai.config import PrysmConnectionConfig
 from prysmai.context import prysm_context, PrysmContext
-from prysmai.governance import GovernanceSession
+from prysmai.governance import GovernanceSession, AsyncGovernanceSession
 from prysmai.mcp import PrysmMCPClient, PrysmMCPConfig
 from prysmai.session import PrysmSession, PrysmSessionIdentifiers
 from prysmai.detectors import (
@@ -57,7 +57,7 @@ from prysmai.detectors import (
     Detection,
 )
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 __all__ = [
     "monitor",
     "PrysmClient",
@@ -69,6 +69,7 @@ __all__ = [
     "prysm_context",
     "PrysmContext",
     "GovernanceSession",
+    "AsyncGovernanceSession",
     "FinancialAnomalyDetector",
     "ResourceAccessDetector",
     "LoopDetector",

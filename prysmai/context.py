@@ -86,6 +86,29 @@ class _ContextManager:
         """Reset context to defaults."""
         _prysm_ctx.set(PrysmContext())
 
+    def from_headers(self, headers: Dict[str, str]) -> None:
+        """
+        Populate context from incoming request headers.
+        Use in downstream services to propagate context across HTTP boundaries.
+
+        Example (FastAPI):
+            @app.post("/downstream")
+            def handler(request: Request):
+                prysm_context.from_headers(dict(request.headers))
+        """
+        ctx = PrysmContext(
+            user_id=headers.get("x-prysm-user-id") or headers.get("X-Prysm-User-Id"),
+            session_id=headers.get("x-prysm-session-id") or headers.get("X-Prysm-Session-Id"),
+            governance_session_id=headers.get("x-prysm-governance-session-id") or headers.get("X-Prysm-Governance-Session-Id"),
+        )
+        meta_raw = headers.get("x-prysm-metadata") or headers.get("X-Prysm-Metadata")
+        if meta_raw:
+            try:
+                ctx.metadata = json.loads(meta_raw)
+            except Exception:
+                pass
+        _prysm_ctx.set(ctx)
+
     def __call__(
         self,
         user_id: Optional[str] = None,
