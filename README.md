@@ -334,14 +334,14 @@ from prysmai import PrysmClient
 
 prysm = PrysmClient(
     prysm_key="sk-prysm-...",
-    base_url="http://localhost:3000/api/v1",
+    base_url="http://localhost:8000/v1",
 )
 ```
 
 The MCP server for that same deployment will resolve to:
 
 ```text
-http://localhost:3000/api/mcp
+http://localhost:8000/mcp
 ```
 
 ## More Documentation

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "prysmai"
-version = "0.8.0"
+version = "0.9.0"
 description = "PrysmAI Python SDK for the proxy and MCP paths into one AI control plane. Capture traces, security findings, policy decisions, and governance evidence for production AI systems."
 readme = "README.md"
 license = { text = "MIT" }
